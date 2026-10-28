@@ -1,0 +1,1119 @@
+﻿// Initialize.tjs - システムの初期化
+// Copyright (C)2001-2008, W.Dee and contributors  改変・配布は自由です
+
+// ロック区分用
+var lockKey = "";
+
+// システムバージョン
+var kagVersion = "EX 3.27-dev.20070519";
+
+/*
+	Debug.message へのショートカット
+*/
+
+var dm = Debug.message; // これで dm("message"); でコンソールに message を表示できる
+
+/*
+	アーカイブの基礎パス
+*/
+if (typeof System.arcPath == "undefined") {
+	/**/  &System.arcPath = System.exePath;
+} else {
+	// 末尾チェック
+	var path = (string)System.arcPath;
+	if (path.substr(path.length-1) != "/") {
+		System.arcPath += "/";
+	}
+}
+
+// プール場所を別名で準備したウインドウ
+class PoolWindow extends Window {
+
+	function PoolWindow() {
+		super.Window(...);
+	}
+	
+	// プール用
+	property poolLayer{getter(){return *(&global.Window.primaryLayer incontextof this);}};
+}
+
+/*
+	デバッグウィンドウが有効かどうか
+*/
+
+if (!debugWindowEnabled) {
+	/*
+		デフォルトの「捕捉されない例外」ハンドラ
+	 */
+	// リリース時処理
+	System.exceptionHandler = function (e) {
+		Debug.logAsError(); // ログのファイルへの書き出し動作の開始など
+		var event_disabled = System.eventDisabled;
+		System.eventDisabled = true;
+		try { if (typeof global.onSystemExceptionHandlerHook == "Object" &&
+				  /**/   global.onSystemExceptionHandlerHook(e)) { System.eventDisabled = event_disabled; return true; }
+		} catch {}
+		System.inform(e.message);
+		System.terminate();
+		return true;
+	};
+	// コンソール・コントローラーを殺す
+	var dummy = %[];
+	&Debug.console    = dummy;
+	&Debug.controller = dummy;
+} else {
+	// デバッグ時処理
+	System.exceptionHandler = function (e) {
+		// どこにも捕捉されない例外がシステム側で捕捉された場合、この関数が
+		// 呼ばれる。e は例外オブジェクト。
+		if (typeof global.developMode == "undefined" || developMode <= 0) {
+//		if (e instanceof "ConductorException") {
+			// コンダクタの投げた例外の場合
+			Debug.logAsError(); // ログのファイルへの書き出し動作の開始など
+			var event_disabled = System.eventDisabled;
+			System.eventDisabled = true;
+			// エラーの理由を表示させている間にイベントが発生すると
+			// やっかいなのでいったんイベント発生を停止させる
+			try { if (typeof global.onSystemExceptionHandlerHook == "Object" &&
+					  /**/   global.onSystemExceptionHandlerHook(e)) { System.eventDisabled = event_disabled; return true; }
+			} catch {}
+			System.inform(e.message);
+			System.eventDisabled = event_disabled;
+			// イベントを発生するかどうかを元の状態に
+			return true; // true を返すと本体側で例外の処理は行わなくなる
+		}
+		if (global.kirikiriz) {
+			if (typeof Debug.console == "Object") {
+				/**/   Debug.console.visible = true;
+				Debug.notice(e.trace);
+				System.inform(e.message, "ExceptionHandler");
+				return true;
+			}
+		}
+		return false; // false を返すと通常の例外処理
+	};
+};
+
+/*
+	パスの設定
+	後に指定した物が、より優先されて使用される
+*/
+
+
+var archive_exists = %[]; // アーカイブが存在するかキャッシュ
+
+function useArchiveIfExists(name)
+{
+	// name を正規化
+	with (Storages) name = .chopStorageExt(.extractStorageName(name));
+	// name が存在していたらそのアーカイブを使う
+	var arcname = System.arcPath + name + ".xp3";
+	var exist = archive_exists[name.toLowerCase()] = Storages.isExistentStorage(arcname);
+	if (exist)
+	{
+		Storages.addAutoPath(arcname + ">");
+	}	
+	return exist;
+}
+
+function addArchive(name)
+{	
+	// 検索パスを設定しつつ，name.xp3 が存在していたらそのアーカイブを使う
+	Storages.addAutoPath(name + "/");
+	
+	return useArchiveIfExists(name);
+}
+
+// サブフォルダつき検索パス登録
+function addArchiveWithSubFolder(name, arr*)
+{
+	var arcname = System.arcPath + name + ".xp3";
+	var isexist = archive_exists[name.toLowerCase()];
+	if (isexist === void) {
+		isexist = addArchive(name);
+	}
+	for (var i = 0; i < arr.count; i++) {
+		var sub = arr[i];
+		if (sub == "") continue;
+		
+		Storages.addAutoPath(name    + "/" + sub + "/");
+		Storages.addAutoPath(arcname + ">" + sub + "/") if (isexist);
+	}
+}
+
+// サブフォルダ検索パス登録
+function setupSubFolders(list) {
+	var binds = %[], names = [];
+	for (var path, i = 0; i < list.count; i++) {
+		if ((path = list[i]) == "") continue;
+		var div = path.split("/");
+		var name = div[0];
+		if (name == "" || div.count <= 1) continue;
+		div.erase(0);
+		if (binds[name] === void) {
+			binds[name] = [];
+			names.add(name);
+		}
+		binds[name].add(div.join("/",,true));
+	}
+	for (var i = 0; i < names.count; i++) {
+		dm("★★★addArchiveWithSubFolder:" + names[i]);
+		addArchiveWithSubFolder(names[i], binds[names[i]]*);
+	}
+}
+
+// 再帰検索フォルダ登録
+function addAutoPathRecursive(path, ignoretop, verbose=debugWindowEnabled?tkdlSimple:tkdlNone) {
+	var enabled, err;
+	with (Storages) {
+		if ((enabled = (typeof .dirlist == "Object" && typeof .isExistentDirectory == "Object")) == false) {
+			var dll, dlls = [ "PackinOne.dll", "fstat.dll" ];
+			while ((dll = dlls.shift()) != "") {
+				if (!CanLoadPlugin(dll)) continue;
+				try { Plugins.link(dll); }
+				catch(e) { try { err += ":"+e.message; } catch {} }
+				enabled = (typeof .dirlist == "Object" && typeof .isExistentDirectory == "Object");
+				if (enabled) break;
+			}
+		}
+	}
+	if (!enabled) {
+		// [XXX]以降も恐らく失敗するので関数自体潰す
+		global.addAutoPathRecursive = function {};
+		Debug.notice("*** addAutoPathRecursive failed"+err);
+	} else if (typeof Storages.dirtree == "Object" && (verbose==tkdlNone || System.getArgument("-usedirtree") == "yes")) {
+		// 再帰フォルダ検索専用メソッドを利用する
+		with (Storages) {
+			path = Storages.getFullPath(path+"/");
+			if (.isExistentDirectory(path)) {
+				.addAutoPath(path) if (!ignoretop);
+				var list = .dirtree(path, /*dironly*/true);
+				for (var i = 0, cnt = list.count; i < cnt; i++) {
+					.addAutoPath(path+list[i]);
+				}
+				Debug.message("addAutoPathRecursive:", ignoretop, path, "\n"+list.join("\n")) if (verbose >= tkdlVerbose);
+			}
+		}
+	} else {
+		var recursive = function (self, base, sub, map, dm) {
+			var path = base + sub, list;
+			with (Storages) {
+				if (!.isExistentDirectory(path)) return;
+				if (sub !== void) {
+					.addAutoPath(path);
+					if (dm) dm("addAutoPathRecursive:"+path);
+				}
+				list = .dirlist(path);
+			}
+			for (var i = 0, cnt = list.count; i < cnt; i++) {
+				var name = (string)(list[i]);
+				if (name == "" || name.charAt(0) == ".") continue;
+				if (name.charAt(name.length-1) != "/") {
+					if (map) {
+						var tag = name.toLowerCase();
+						Debug.notice("*** conflict:\n", sub+name+"\n", map[tag]+tag) if (map[tag] != "");
+						map[tag] = sub;
+					}
+					continue;
+				}
+				self(self, base, sub+name, map, dm);
+			}
+		} incontextof global;
+		var sub = ignoretop ? void : "", map, dm;
+		if (verbose >= tkdlSimple) map = new Dictionary(10000); //%[];
+		if (verbose >= tkdlVerbose) dm = Debug.message;
+		recursive(recursive, Storages.getFullPath(path+"/"), sub, map, dm);
+	}
+}
+
+// PackinOne読み込みをStorages.tjs前に行う
+try {
+	var dll = "PackinOne.dll";
+	Plugins.link(dll) if (CanLoadPlugin(dll));
+} catch {}
+
+/*
+	フォルダ登録及びアーカイブの検索と使用
+	（後に登録した物ほど検索の優先度が高くなります）
+*/
+
+//Storages.addAutoPath(System.exePath + "video/"); // exePath 以下の video/
+//Storages.addAutoPath("data/"); // data フォルダ
+Storages.addAutoToolsPath = typeof global.getToolsPath == "Object" ? function { addAutoPath(global.getToolsPath(...)); } incontextof Storages : function {};
+{
+	// XXX 開発者用機能 
+	// develop.txt ファイルがある場合は tools/engine からシステムスクリプトファイルを参照します
+	var addTools = addArchive;
+	if (debugWindowEnabled && typeof global.developMode != "undefined" && developMode) {
+		addTools = function (dir) { addAutoToolsPath("engine/"+dir+"/"); } incontextof Storages;
+	}
+	if (kirikiriz) addTools("k2compat");
+	addTools("system");
+	addTools("sysscn");
+
+	// data以下のサブフォルダを登録
+	// もしこれらの名前を持ったアーカイブが実行可能ファイルと
+	// 同じ場所にあった場合、それを優先して使う
+
+	var subfolders = [
+		"video",    // video フォルダ
+		"others",   // その他
+		"rule",     // ルール画像フォルダ
+		"sound",    // 効果音フォルダ
+		"bgm",      // BGM フォルダ
+		"fgimage",  // 前景画像フォルダ
+		"bgimage",  // 背景画像フォルダ
+		"scenario", // シナリオフォルダ
+		"scn",      // 変換後シナリオフォルダ
+		"image",    // そのほかの画像フォルダ
+		"voice",    // ボイスフォルダ
+		"face",     // フェイスフォルダ
+		"init",     // 初期化用フォルダ
+		"font",     // 埋め込みフォント
+		"sysse",    // システム用効果音
+		"main",     // システム用シナリオ
+		"evimage",  // イベント画像
+		"thum",     // サムネイル
+		"uipsd",    // ユーザーインターフェース用パーツ画像
+		"motion",   // モーションデータ
+		"motiondx",  // DirectX用モーションデータ
+		"emote",     // Emoteデータ
+		"emotedx",   // DirectX用Emoteデータ
+		"bishamon",  // BISHAMONデータ
+		
+		"EN",
+		"CN",
+		"TW",
+		
+		];
+	for (var i = 0; i < subfolders.count; i++) {
+		var name = subfolders[i];
+		addArchive(name) if (name != "");
+	}
+}
+
+if (debugWindowEnabled || (typeof global.inXP3archivePacked != "undefined" && !inXP3archivePacked)) {
+	// [XXX] 決め打ち注意/x64未想定
+	Storages.addAutoToolsPath("plugin/");
+	Storages.addAutoPath(System.exePath+"setup/plugin/");
+}
+if (debugWindowEnabled) {
+	Storages.addAutoToolsPath("/");
+	addAutoPathRecursive(System.exePath+"setup/debug/");
+	addAutoPathRecursive(getToolsPath("engine/debug/")) if (typeof global.getToolsPath == "Object");
+	useArchiveIfExists("debug");
+	// messenger.dll読み込みはデバッグ時のみ
+	if (!convertMode) {
+		try {
+			var plug = "messenger.dll";
+			Plugins.link(plug) if (CanLoadPlugin(plug));
+		} catch(e) {}
+	}
+}
+
+// パッチ適用後追加処理用
+var patch_aftercall = [];
+
+// カスタムフォルダ登録処理スクリプトを実行（※パッチの前に評価すること）
+if(Storages.isExistentStorage("Storages.tjs"))
+	Scripts.execStorage("Storages.tjs");
+
+
+// 従来方式パッチ
+@if (!INITIALIZE_PATCH_AUTOREV)
+// パッチアーカイブ（※パッチの中身は平坦展開でパッチ内サブフォルダは使えない）
+useArchiveIfExists("patch.xp3");
+
+// 追加のパッチ用アーカイブの検索
+for(var i = 2; ; i++)
+{
+	// パッチ用アーカイブ patch2.xp3, patch3.xp3 ... がある場合はそちらを
+	// 優先して読み込むように
+	var patch = System.arcPath + "patch" + i + ".xp3";
+	if(Storages.isExistentStorage(patch))
+	{
+	//Storages.addAutoPath(patch + ">");
+	}
+	else break;
+}
+@endif
+
+// リビジョン名付きパッチファイル自動検索 （※ Initialize.tjs コンパイル前提なので注意）
+@if (INITIALIZE_PATCH_AUTOREV) // >0:一番大きいもののみ登録 / <0:小さい順からすべて登録
+try {
+	var all = @if (INITIALIZE_PATCH_AUTOREV < 0) 1| @endif 0;
+	var path = System.arcPath;
+	var list = Storages.dirlist(path);
+	var found, rev = -1, rex = /^patch@r([1-9][0-9]*)\.xp3$/; // @!#$%&'`+-=^~_,;()[]{}
+	for (var i = list.count-1; i >= 0; --i) {
+		var item = ((string)list[i]).toLowerCase();
+		if (rex.test(item)) {
+			var mrev = +rex.matches[1];
+			if (all) {
+				found = [] if (found === void);
+				found.add([ mrev, item ]);
+			} else if (mrev > rev) {
+				found = item;
+				rev = mrev;
+			}
+		}
+	}
+	if (found !== void) {
+		var currev = -1, revfile = "currev.ini"; // [XXX] pacing system depends
+		if (Storages.isExistentStorage(revfile)) try {
+			currev = +Scripts.evalStorage(revfile);
+		} catch {}
+		if (found instanceof "Array") {
+			found.sort(function (a,b) { return a[0] < b[0]; });
+		} else {
+			found = [ [ rev, found ] ];
+		}
+		for (var i = 0; i < found.count; i++) {
+			var ref = found[i];
+			if (ref[0] > currev) {
+				var file = ref[1];
+				
+				Storages.addAutoPath(path + file + ">");
+				Debug.notice("*** autorev patch: " + file);
+			}
+		}
+	}
+} catch {}
+@endif
+
+// パッチ適用後の追加処理(Storages.tjsなどで登録することを想定
+{
+	for (var cnt = patch_aftercall.count, i = 0; i < cnt; ++i) {
+		var func = patch_aftercall[i];
+		if (func instanceof "Function") func();
+	}
+	delete global.patch_aftercall; // 消す
+}
+
+//delete useArchiveIfExists; // useArchiveIfExists は使い終わったので一応消しておく
+
+/*
+	システムバージョン
+*/
+{
+	var log = Debug.notice;
+	log("#".repeat(40));
+	log("OS : " + System.osName + " (" + System.platformName + ")");
+	//log("KAG : " + kagVersion);
+	if (Storages.isExistentStorage("enginerev.ini")) {
+		var tmp = Debug.EngineRev = [];
+		tmp.load("enginerev.ini");
+		log("Engine : " + tmp.join(", "));
+	} else Debug.EngineRev = void;
+	log("Kirikiri : " + System.versionString);
+	log("#".repeat(40)+"\r\n");
+}
+
+/*
+	( デバッグ ) 時間計測
+*/
+
+var parseStartTick = System.getTickCount();
+
+
+/*
+	スクリプト読み込みラッパー
+*/
+
+function KAGLoadScript(name)
+{
+	var start = System.getTickCount();
+	Scripts.execStorage(name);
+	dm(name + " を読み込みました(" + (System.getTickCount() - start) + "ms)");
+}
+
+var loaded_scripts = %[];
+
+function KAGLoadScriptOnce(name)
+{
+	// 指定したスクリプトを読み込むが、一回しか読み込まない
+	if(global.loaded_scripts[name] === true) return; // 既に読み込んでいる
+	global.KAGLoadScript(name);
+	global.loaded_scripts[name] = true;
+}
+function KAGLoadScriptIfExists(name, once=true) {
+	if (Storages.isExistentStorage(name)) {
+		if (once) KAGLoadScriptOnce(name);
+		else      KAGLoadScript(name);
+	}
+}
+function KAGLoadScriptIfDebug(name, once=true) {
+	KAGLoadScriptIfExists(...) if (debugWindowEnabled);
+}
+
+function KAGConfigEnabled(name, dflt) {
+	// global変数参照
+	return (typeof global[name] == "undefined") ? dflt : global[name];
+}
+function CanLoadPlugin(name) {
+	var exepath = System.exePath, exist = Storages.isExistentStorage;
+	// [XXX] プラグインパス決め打ち注意/x64未想定
+	if (exist(exepath+name) || exist(exepath+"plugin/"+name) || exist(exepath+"system/"+name)) return true;
+	var placed = Storages.getPlacedPath(name);
+	return placed != "" && exist(placed);
+}
+try {
+	var dll = "KAGParserEx.dll";
+	Plugins.link(dll) if (CanLoadPlugin(dll));
+} catch {}
+
+/*
+	AppConfig.tjs 読み込み
+*/
+if(Storages.isExistentStorage("AppConfig.tjs"))
+{
+	KAGLoadScript("AppConfig.tjs");
+}
+
+/*
+	Config.tjs 読み込み
+*/
+if(Storages.isExistentStorage("Config.tjs"))
+{
+	KAGLoadScript("Config.tjs");
+}
+else if(Storages.isExistentStorage("Config.~new"))
+{
+	System.inform("Config.tjs が見つかりません。\nsystem フォルダにある "
+		"Config.~new ファイルを Config.tjs に改名してください。");
+	System.exit();
+}
+else
+{
+	throw new Exception("Config.tjs が見つかりません。");
+}
+
+if (typeof global.ENV_GameName != "undefined") {
+	System.title = global.ENV_GameName;
+}
+if (typeof global.ENV_GameId != "undefined" && lockKey == "") {
+	lockKey = global.ENV_GameId;
+}
+
+/*
+	Config.tjs バージョンチェック
+*/
+
+if(typeof global.config_version == "undefined" || config_version != kagVersion)
+{
+	KAGLoadScript("UpdateConfig.tjs");
+}
+
+/*
+	二重起動のチェック
+*/
+
+// 実行可能ファイルのパスをキーにしてロックを行う
+function MakeLockKey(key = lockKey) {
+	var result = (System.exePath + key);
+	if (typeof       Scripts.makeDataPackDigest == "Object") {
+		var digest = Scripts.makeDataPackDigest;
+		var a = digest(System.dataPath, 1, key, 1);
+		var b = digest(key, 0, a, 0);
+		// [MEMO] result = key + "_%016x_%08x".sprintf(a,b); のKZの動作に不備あり（#184がまだ未mergeの模様）
+		function hex(num, bytecnt, prefix, r/*postfix*/) {
+			for (; bytecnt > 0; num >>= 8, --bytecnt) r = "%02x".sprintf(num & 0xFF) + r;
+			return prefix + r;
+		}
+		result = key + hex(a,8,"_","_") + hex(b,4);
+	}
+	return result.replace(/[^A-Za-z0-9]/g, '_');
+}
+
+if(!convertMode && !System.createAppLock(System.appLockKey=MakeLockKey()) && typeof global.restart == "undefined")
+{
+	// すでに起動している
+	var info = "Mashiroiro Symphony HD -Love is Pure White-" + " is already running.", reason = "BootFailAlreadyRunning";
+
+	if (System.getArgument("-restartboot") == "block" && typeof System.waitForAppLock == "Object") {
+		// 再起動オプションがある場合はブロックを行う
+		var timeout = int(+System.getArgument("-restarttimeout")), key = System.appLockKey;
+		if (timeout <= 0) timeout = 3000;
+		var result = System.waitForAppLock(key, timeout);
+		info = result ? void : (System.title + "の再起動に失敗しました");
+		reason = "BootFailCannotRestart";
+	} else {
+		if (debugWindowEnabled && typeof Window.sendMessage == "Object" &&   System.getArgument("-sendmessage") != "") {
+			var mykey = typeof global.MessengerSendMessageKey == "String" ? MessengerSendMessageKey : System.appLockKey; //System.title;
+			// 外部制御メッセージを送る指定がある場合
+			try { (Window.sendMessage incontextof %[ HWND:0 ])(mykey, System.getArgument("-sendmessage")); } catch {}
+			info = "";
+		}
+	}
+	if (info !== void) {
+		if (info == "") return System.exit();
+		if (typeof global.bootFailDelayedInform != "undefined") {
+			// 遅延メッセージ表示（※主に翻訳対応用）
+			bootFailDelayedInform = [ bootFailDelayedInform, reason, info ];
+
+			// @Config.tjs : 起動失敗のエラーメッセージをGetSystemLangMessage経由で取得する（要multilang.tjs）
+			//;global.bootFailDelayedInform = true; // or function(reason) {}
+		} else {
+			System.inform(info);
+			return System.exit();
+		}
+	}
+}
+delete global.MakeLockKey;
+
+/*
+	オン・デマンド・ローディングを行うための定義
+*/
+
+
+property askYesNo { getter() { KAGLoadScript("YesNoDialog.tjs"); return global.askYesNo; } }
+//property ButtonLayer { getter() { KAGLoadScript("ButtonLayer.tjs"); return global.ButtonLayer; } }
+@if (ENABLE_OLDUI_CHECKBOX)
+property CheckBoxLayer { getter() { KAGLoadScript("CheckBoxLayer.tjs"); return global.CheckBoxLayer; } }
+property LinkCheckBoxLayer   { getter { var chk = CheckBoxLayer; return global.LinkCheckBoxLayer;   } }
+property DialogCheckBoxLayer { getter { var chk = CheckBoxLayer; return global.DialogCheckBoxLayer; } }
+@endif
+property EditLayer { getter() { KAGLoadScript("EditLayer.tjs"); return global.EditLayer; } }
+property LinkEditLayerBase     { getter { var edit = EditLayer; return global.LinkEditLayerBase; } }
+//
+property SliderLayer { getter() { KAGLoadScript("SliderLayer.tjs"); return global.SliderLayer; } }
+property SystemSliderLayerBase { getter { var sl = SliderLayer; return global.SystemSliderLayerBase; } }
+property LinkSliderLayerBase   { getter { var sl = SliderLayer; return global.LinkSliderLayerBase;   } }
+//
+property KAGPlugin { getter() { KAGLoadScript("Plugin.tjs"); return global.KAGPlugin; } }
+property execDialog { getter() { KAGLoadScript("ExecDialog.tjs"); return global.execDialog; } }
+property uiload       { getter() { KAGLoadScript("UILoader.tjs"); return global.uiload;       } }
+property uiloadParse  { getter() { KAGLoadScript("UILoader.tjs"); return global.uiloadParse;  } }
+property uiloadSystem { getter() { KAGLoadScript("UILoader.tjs"); return global.uiloadSystem; } }
+property uiloadExists { getter() { KAGLoadScript("UILoader.tjs"); return global.uiloadExists; } }
+property LogWindow { getter() {
+	Scripts.exec(@"@set (LOGWINDOW_ENABLE_WIN32DIALOG=1)") if (CanLoadPlugin("win32dialog.dll") && Storages.isExistentStorage("win32dialog.tjs"));
+	KAGLoadScript("LogWindow.tjs");
+	return global.LogWindow;
+} }
+
+/*
+	各システム読み込み
+*/
+dm("KAG System スクリプトを読み込んでいます...");
+
+if (global.kirikiriz)
+{
+	@set (K2COMPAT_PURGE_FONTSELECT=1)
+	@set (K2COMPAT_PURGE_KAGPARSER=1)
+//	Scripts.exec("@set (K2COMPAT_VERBOSE=1)") if (debugWindowEnabled);
+	Scripts.execStorage("k2compat.tjs");
+	Krkr2CompatUtils.scriptBase = "";
+}
+
+// add by GoWatanabe
+KAGLoadScript("LayerEx.tjs");
+
+KAGLoadScript("Utils.tjs");
+KAGLoadScript("KAGLayer.tjs");
+KAGLoadScript("AnimKAGLayer.tjs");
+
+KAGLoadScript("ButtonLayer.tjs");
+
+KAGLoadScript("TransLayer.tjs");
+KAGLoadScript("SelectLayer.tjs");
+KAGLoadScript("MapSelectLayer.tjs");
+KAGLoadScript("DialogLayer.tjs");
+KAGLoadScript("HistoryLayer.tjs");
+KAGLoadScript("BGM.tjs");
+KAGLoadScript("SE.tjs");
+KAGLoadScript("Voice.tjs");
+KAGLoadScript("Movie.tjs");
+KAGLoadScript("Conductor.tjs");
+
+KAGLoadScript("UpdateRegion.tjs");
+KAGLoadScript("psdlayer.tjs");
+KAGLoadScript("StandLayer.tjs");
+KAGLoadScript("TextRender.tjs");
+KAGLoadScript("LangRender.tjs");
+KAGLoadScript("AffineLayer.tjs");
+
+KAGLoadScript("MultiResolution.tjs");
+KAGLoadScript("AffineSourceBMPBase.tjs");
+KAGLoadScript("AffineSourceBitmap.tjs");
+KAGLoadScript("AffineSourcePSD.tjs");
+
+KAGLoadScript("AffineSourceImage.tjs");
+KAGLoadScript("AffineSourceFlip.tjs");
+KAGLoadScript("AffineSourceVector.tjs");
+KAGLoadScript("AffineSourceStand.tjs");
+KAGLoadScript("AffineSourceASD.tjs");
+KAGLoadScript("AffineSourceTile.tjs");
+KAGLoadScript("AffineSourceMultiTile.tjs");
+KAGLoadScript("AffineSourceNoise.tjs");
+
+
+
+KAGLoadScript("AnimationLayer.tjs");
+KAGLoadScript("GenericFlip.tjs");
+KAGLoadScript("BaseLayer.tjs");
+KAGLoadScript("GFX_Fire.tjs")     if (KAGConfigEnabled("gfxFireEnabled",     true) && CanLoadPlugin("gfxEffect.dll"));
+KAGLoadScript("GFX_Movie.tjs")    if (KAGConfigEnabled("gfxMovieEnabled",    true));
+KAGLoadScript("GFX_Flash.tjs")    if (KAGConfigEnabled("gfxFlashEnabled",    true) && CanLoadPlugin("flashPlayer.dll"));
+KAGLoadScript("GFX_Particle.tjs") if (KAGConfigEnabled("gfxParticleEnabled", true));
+KAGLoadScript("GFX_AMovie.tjs")   if (KAGConfigEnabled("gfxAlphaMovieEnabled", true) && CanLoadPlugin("AlphaMovie.dll"));
+KAGLoadScript("GFX_Mpeg2V.tjs")   if (KAGConfigEnabled("gfxMpeg2videoEnabled", true) && CanLoadPlugin("m2vdec.dll"));
+KAGLoadScript("GFX_Voice.tjs");
+KAGLoadScript("live2d.tjs") if (KAGConfigEnabled("live2dEnabled", true) && (CanLoadPlugin("krkrlive2d.dll")));
+KAGLoadScript("motion.tjs") if (KAGConfigEnabled("motionEnabled", true) && (CanLoadPlugin("emoteplayer.dll") || CanLoadPlugin("motionplayer.dll") || CanLoadPlugin("motionplayer_nod3d.dll")));
+KAGLoadScript("MessageLayer.tjs");
+KAGLoadScript("Menus.tjs");
+KAGLoadScript("DefaultMover.tjs");
+KAGLoadScript("Action.tjs");
+KAGLoadScript("LoopVoice.tjs");
+KAGLoadScript("LineMode.tjs");
+KAGLoadScript("LineModeEx.tjs");
+KAGLoadScript("MainWindow.tjs");
+KAGLoadScript("Way3.tjs");
+{
+	var enworld = false;
+	// ワールド拡張機能読み込み
+	if (typeof global.worldEnabled == "undefined" || global.worldEnabled) {
+		KAGLoadScript("world.tjs");
+		enworld = true;
+	}
+
+	if(Storages.isExistentStorage("Override.tjs")) {
+		KAGLoadScript("Override.tjs");
+
+		// 立ち絵表示確認用ウインドウ機能
+		if (debugWindowEnabled && enworld) {
+			KAGLoadScript('standview.tjs') if (Storages.isExistentStorage('standview.tjs'));
+		}
+	}
+}
+
+// 解像度情報読み込み
+loadResolutionInfo("resolutions");
+
+try {
+	var dll = "wuvorbis.dll";
+	Plugins.link(dll) if (CanLoadPlugin(dll)) && KAGConfigEnabled("wuVorbisEnabled",true);
+} catch {}
+try {
+	var dll = "wuopus.dll";
+	Plugins.link(dll) if (CanLoadPlugin(dll)) && KAGConfigEnabled("wuOpusEnabled",false);
+} catch {}
+
+//if(Storages.isExistentStorage(System.exePath + "Override2.tjs"))
+//	KAGLoadScript(System.exePath + "Override2.tjs");
+
+/*
+	( デバッグ ) 時間計測
+*/
+dm("スクリプトの読み込みに " + (System.getTickCount() - parseStartTick) + "ms かかりました");
+parseStartTick = System.getTickCount();
+
+/*
+	( デバッグ ) VM コードのダンプ
+*/
+
+// Scripts.dump();
+
+/*
+	( デバッグ ) 時間計測
+*/
+
+parseStartTick = System.getTickCount();
+
+/*
+	遅延エラー表示
+ */
+if (typeof global.bootFailDelayedInform == "Object" && bootFailDelayedInform instanceof "Array") {
+	var method = bootFailDelayedInform.shift();
+	switch (typeof method) {
+	case "String": method = (method != "" && typeof global[method] == "Object") ? global[method] : void; // not break
+	case "Object": if (method && method instanceof "Function") break;
+	default: method = void; break;
+	}
+	if (method !== void) method(bootFailDelayedInform*); // カスタム呼び出し
+	else {
+		// 通常処理
+		var mes = GetSystemLangMessage(bootFailDelayedInform*);
+		System.inform(applyInlineStringVariableExtract(mes));
+	}
+	return System.exit();
+}
+
+/*
+	KAG メインウィンドウの作成
+	グローバルメンバ kag が存在しなければ KAGWindow クラスの
+	オブジェクトを作成して入れる
+*/
+
+if (convertMode) {
+	global.kag = new KAGWindow(true, 0, 0, true) if typeof global.kag == "undefined";
+} else {
+	global.kag = new KAGWindow() if typeof global.kag == "undefined";
+}
+
+if (typeof global.KAGWorldPlugin != 'undefined') {
+
+	// シーンパーサ導入
+	if (debugWindowEnabled) {
+		Storages.addAutoToolsPath("engine/sceneparser/");
+		if (Storages.isExistentStorage("SceneParser2.tjs")) {
+			Scripts.execStorage("SceneParser2.tjs");
+			Storages.addAutoPath(Storages.getFullPath("../setup/"));
+			Storages.addAutoPath(Storages.getFullPath("../scenario/"));
+			Storages.addAutoPath(Storages.getFullPath("../image/"));
+		}
+	}
+	// ワールド拡張プラグイン
+	kag.addPlugin(global.world_object = new KAGWorldPlugin(kag));
+	if (kag.debugLevel >= tkdlSimple) {
+		dm("ワールド環境設定完了");
+	}
+}
+
+/*
+	グローバルから簡単にアクセスできるように、いくつかの
+	変数の別名を作成
+*/
+
+var f = kag.flags;   // ユーザ変数 (フラグ)
+var sf = kag.sflags; // システム変数 (システム)
+var tf = kag.tflags; // 一時変数 (一時フラグ)
+
+/*
+	( デバッグ ) 時間計測
+*/
+dm("KAGMainWindow のコンストラクタで " + (System.getTickCount() - parseStartTick) + "ms かかりました");
+delete parseStartTick;
+/*
+	AfterInit.tjs が存在すれば実行
+*/
+
+	if(Storages.isExistentStorage("AfterInit.tjs"))
+    KAGLoadScript("AfterInit.tjs");
+
+//if(Storages.isExistentStorage(System.exePath + "AfterInit2.tjs"))
+//	KAGLoadScript(System.exePath + "AfterInit2.tjs");
+
+/*
+	コマンドラインパラメータとして -ovr が指定されていれば
+	そのパラメータを TJS 式として実行
+*/
+//{
+//	var ovr = System.getArgument('-ovr');
+//	if(ovr !== void && ovr != 'yes') Scripts.eval(ovr);
+//}
+
+callAfterInit();
+
+//言語選択対応
+var backlog_auto_line_end_flag = false;
+var backlog_font_width = 20;
+
+var language = "";
+var lang_text_Choice = "choice:";
+var lang_ExChViewPopupText = "Left click and drag to move. (Right click to cancel.)";
+
+var lang_text1 = "立ち絵鑑賞データ保存";
+var lang_text2 = "データ保存に失敗しました:";
+var lang_text3 = "ユーザー背景画像選択";
+var lang_text4 = "立ち絵鑑賞データ読み込み";
+var lang_text5 = "データ読み込みに失敗しました:";
+var lang_text6 = "メッセージ窓の内容を編集";
+var lang_text7 = "画面キャプチャ";
+var lang_text8 = "画面キャプチャに失敗しました:";
+var lang_text9 = "画像ファイル(*.png;*.jpg;*.bmp)";
+var lang_text10 = "すべてのファイル(*.*)";
+
+var lang_namelist = [];
+
+var result = askLanguage("Please select a language");
+
+	Storages.addAutoPath(System.exePath + "data/patch/evimage/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/");
+	Storages.addAutoPath(System.exePath + "data/patch/bgimage/");
+	Storages.addAutoPath(System.exePath + "data/patch/image/");
+	Storages.addAutoPath(System.exePath + "data/patch/sound/");
+	Storages.addAutoPath(System.exePath + "data/patch/thum/");
+	Storages.addAutoPath(System.exePath + "data/patch/uipsd/");
+	Storages.addAutoPath(System.exePath + "data/patch/video/");
+
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/rename/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/st_ag/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/st_ar/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/st_sk/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/st_mu/");
+	Storages.addAutoPath(System.exePath + "data/patch/fgimage/st_sn/");
+
+	Storages.addAutoPath(System.exePath + "data/patch/fhd/");
+	Storages.addAutoPath(System.exePath + "data/patch/fhd/evimage/");
+	Storages.addAutoPath(System.exePath + "data/patch/fhd/video/");
+	Storages.addAutoPath(System.exePath + "data/patch2/voice/");
+
+if(Storages.isExistentStorage(System.exePath + "patch"+".xp3"))
+{
+	Storages.addAutoPath(System.exePath + "patch.xp3>bgimage/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>evimage/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/rename/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/st_ag/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/st_ar/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/st_sk/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/st_mu/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fgimage/st_sn/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fhd/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fhd/evimage/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>fhd/video/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>thum/");
+	Storages.addAutoPath(System.exePath + "patch.xp3>uipsd/");
+
+
+}
+if(Storages.isExistentStorage(System.exePath + "patch2"+".xp3"))
+{
+    Storages.addAutoPath(System.exePath + "patch2.xp3>");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ag/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ar/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/bc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/da/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/db/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/dm/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/E/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/fa/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ft/");
+ 	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ga/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/gb/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/gm/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/go/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ht/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ja/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jb/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jd/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jf/");
+ 	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jo/");
+ 	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/jt/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ko/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/kp/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/kr/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ky/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/mc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/mp/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/mu/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/pn/");
+ 	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ra/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/rb/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/rk/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sa/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sb/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sd/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sk/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sn/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/st/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/sysvoice/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/tc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/wc/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/ya/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/yb/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/yj/");
+	Storages.addAutoPath(System.exePath + "patch2.xp3>voice/yk/");
+}
+
+if(result == 1)
+{
+	backlog_auto_line_end_flag = true;
+
+	System.title = "Mashiroiro Symphony HD -Love is Pure White-";
+	
+	//シナリオ
+	global.MessageDefaultFontFace = "NotoSansCJKJPBl";
+	global.SystemDefaultFontFace  = global.MessageDefaultFontFace; // システム用
+	global.kag.chDefaultFace = global.MessageDefaultFontFace;	// フォント
+	global.kag.setMessageLayerUserFont();
+	
+	language = "EN";
+	lang_text_Choice = "Choice:";
+	
+	lang_text1 = "Save Sprite Viewer Data";
+	lang_text2 = "Failed to save data:";
+	lang_text3 = "Select a Custom Background";
+    lang_text4 = "Load Sprite Viewer Data";
+	lang_text5 = "Failed to load data:";
+	lang_text6 = "Edit the Text Area";
+	lang_text7 = "Sprite Screenshot";
+	lang_text8 = "Failed to capture screenshot:";
+	lang_text11 = "Drag&Drop: Load\nClick again: Save";
+	
+	lang_namelist = 
+	[
+		"Airi",
+		"Sakuno",
+		"Ange",
+		"Miu",
+		"Sana",
+		"Panditty",
+		"Hayata",
+		"Macchi",
+		"Ranka",
+		"Yuiko",
+	];
+}
+else if(result == 2)
+{
+	System.title = "純白交響曲 -Love is Pure White- HD Remake";
+
+	//シナリオ
+	global.MessageDefaultFontFace = "NotoSansCJKTCBl";
+	global.SystemDefaultFontFace  = global.MessageDefaultFontFace; // システム用
+	global.kag.chDefaultFace = global.MessageDefaultFontFace;	// フォント
+	global.kag.setMessageLayerUserFont();
+	
+	language = "TW";
+	
+	lang_text_Choice = "選項：";
+	lang_ExChViewPopupText = "用左鍵拖曳可以移動(點右鍵取消)。";
+	
+	lang_text1 = "儲存立繪鑑賞資料";
+	lang_text2 = "檔案儲存失敗:";
+	lang_text3 = "選擇背景圖片";
+	lang_text4 = "讀取立繪鑑賞資料";
+	lang_text5 = "檔案讀取失敗:";
+	lang_text6 = "編輯訊息視窗內容";
+	lang_text7 = "擷取螢幕畫面";
+	lang_text8 = "擷取螢幕畫面失敗:";
+	lang_text11 = "拖移到左側載入，\n再次點擊存檔。";
+	
+	lang_namelist = 
+	[
+		"愛理",
+		"櫻乃",
+		"安潔",
+		"美羽",
+		"紗凪",
+		"熊喵",
+		"隼太",
+		"萬智",
+		"蘭華",
+		"結子",
+	];
+}
+else if(result == 3)
+{
+	System.title = "纯白交响曲 -Love is Pure White- HD Remake";
+
+	//シナリオ
+	global.MessageDefaultFontFace = "NotoSansCJKSCBl";
+	global.SystemDefaultFontFace  = global.MessageDefaultFontFace; // システム用
+	global.kag.chDefaultFace = global.MessageDefaultFontFace;	// フォント
+	global.kag.setMessageLayerUserFont();
+	
+	language = "CN";
+	
+	lang_text_Choice = "选项：";
+	lang_ExChViewPopupText = "用左键拖曳可以移动(点右键取消)。";
+	
+	lang_text1 = "储存立绘鉴赏资料";
+	lang_text2 = "档案储存失败:";
+	lang_text3 = "选择背景图片";
+	lang_text4 = "读取立绘鉴赏资料";
+	lang_text5 = "档案读取失败:";
+	lang_text6 = "编辑信息视窗内容";
+	lang_text7 = "撷取屏幕画面";
+	lang_text8 = "撷取屏幕画面失败:";
+	lang_text11 = "它拖动到负载的左侧，\n再次点击存档。";
+	
+	lang_namelist = 
+	[
+		"爱理",
+		"樱乃",
+		"安洁",
+		"美羽",
+		"纱凪",
+		"熊喵",
+		"隼太",
+		"万智",
+		"兰华",
+		"结子",
+	];
+}
+
+	lang_namelist = 
+	[
+		"Airi",
+		"Sakuno",
+		"Ange",
+		"Miu",
+		"Sana",
+		"Panditty",
+		"Hayata",
+		"Macchi",
+		"Ranka",
+		"Yuiko",
+	];
+
+	Storages.addAutoPath(System.exePath +"scenario2/ALLAGE/"+ language +"/");
+	Storages.addAutoPath(System.exePath +"scenario2/R18/"+ language +"/");
+	
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/anim/");	
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/");	
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/bgimage/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/image/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/main/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/scenario/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/sysscn/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/system/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/append/uipsd/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/image/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/main/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/scenario/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/scn/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/sysscn/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/system/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/uipsd/");
+	Storages.addAutoPath(System.exePath +"data/"+ language +"/video/");
+
+	Storages.addAutoPath(System.exePath + "data/patch/"+ language +"/scn/");
+	
+	Storages.addAutoPath(System.exePath + "data/patch/fhd/"+ language +"/image/");
+	Storages.addAutoPath(System.exePath + "data/patch/fhd/"+ language +"/uipsd/");
+	
+	if(Storages.isExistentStorage(System.exePath + "data"+".xp3"))
+	{
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/anim/");
+
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/bgimage/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/image/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/main/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/scenario/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/sysscn/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/system/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/append/uipsd/");
+		
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/image/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/main/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/scenario/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/scn/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/sysscn/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/system/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/uipsd/");
+		Storages.addAutoPath(System.exePath +"data.xp3>"+ language +"/video/");
+	}
+
+	if(Storages.isExistentStorage(System.exePath + "patch"+".xp3"))
+	{	
+		Storages.addAutoPath(System.exePath +"patch.xp3>"+ language +"/scn/");
+		
+		Storages.addAutoPath(System.exePath +"patch.xp3>fhd/"+ language +"/uipsd/");
+		Storages.addAutoPath(System.exePath +"patch.xp3>fhd/"+ language +"/image/");
+	}
+	
+	kag.BgmTitleIndicator.reloadDefault();
+	kag.EzSave = new EasySaveLoadPanel(kag);
+	KAGLoadScript("default.tjs");
+
+/*
+	first.ks の実行
+*/
+
+kag.process("first.ks") if (!convertMode);

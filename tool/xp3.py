@@ -274,7 +274,7 @@ def unpack_xp3(inpath, outdir="out", xp3filter: xp3filter_t=None):
     data.close()
     fp.close()
 
-def pack_xp3(indir, outpath, compress="none", xp3filter: xp3filter_t=None):
+def pack_xp3(indir, outpath, compress="none", xp3filter: xp3filter_t=None, show_log=True):
     compress_index = True if compress.lower() in {"index", "all"} else False
     compress_content = True if compress.lower() in {"content", "all"} else False
     
@@ -318,8 +318,11 @@ def pack_xp3(indir, outpath, compress="none", xp3filter: xp3filter_t=None):
             segm.zsize = len(data)
             outio.write(data)
 
-        print(f"[pack_xp3] {i+1}/{len(inpaths)} {inpath} fsize=0x{info.fsize} zsize=0x{info.zsize}")
-        entry = Xp3Entry(info, adlr,[segm])
+        if show_log:
+            print(f"[pack_xp3] {i+1}/{len(inpaths)} {inpath} "
+                  f"fsize=0x{info.fsize} zsize=0x{info.zsize}")
+        entry = Xp3Entry(info=info, adlr=adlr, segms=[segm])
+        entry.name = inpath
         entries.append(entry)
 
     # make xp3 entry data

@@ -1,0 +1,679 @@
+// Appendデータ用処理
+// 使用方法：
+// ・Storages.tjs末尾にて KAGLoadScript("append_init.tjs"); を追記
+// ・custom.tjs内において SetupAppendData(); を実行
+
+@set (APPEND_EXTENTION = 1)
+Scripts.exec("@set (APPEND_EXTENTION = 1)");
+global.appendExtention = true;
+
+dm("★ append_init.tjs 10");
+
+System.setArgument("-noappendscn1","yes");
+System.setArgument("-noappendscn2","no");
+
+var AppendDataExists = 0;
+if (typeof global.AppendDataConfig == "undefined")
+	/**/   global.AppendDataConfig = %[];
+with (AppendDataConfig) {
+	var conf = AppendDataConfig;
+	.min =  0 if (.min === void);
+	.max = 99 if (.max === void);
+	.setuphook = [ "title", "setup" ] if (.setuphook === void);
+dm("★ append_init.tjs 20");
+	.exists = %[];
+	.list   =  [];
+	.add = function(id) {
+		var bit = 1 << (id < 64 ? id : 63);
+		global.AppendDataExists |= bit;
+		exists[(string)+id] = true;
+		list.add(id);
+	} incontextof AppendDataConfig;
+dm("★ append_init.tjs 29");
+	.procxp3 = function (id, usearc) {
+//		with (AppendDataConfig) {
+			var tag = @"patch_append${id}", replace, multi;
+			var fix = tag+"_fix";
+			if ((replace = AppendDataConfig[tag]) !== void) {
+				// [MEMO] AppendDataConfig.patch_appendX = "rename-xp3 base"; or = [ rename-xp3-list ];
+				switch (typeof replace) {
+				case "Object":
+					if (!replace) return void; //continue; // === null の場合はこのパッチ機構自体を無視
+					multi = true;
+					tag = replace[0]; // means rename-xp3-list first xp3
+					fix = void;
+					break;
+				case "String":
+					if (replace != "") tag = replace, fix = void;
+					break;
+				}
+			}
+			var checkxp3 = function (dir, name) {
+				var path = typeof System.arcPath != "undefined" ? System.arcPath : System.exePath;
+				return Storages.isExistentStorage(path + dir + "/" + name + ".xp3");
+			} incontextof global;
+			var folder = AppendDataConfig[@"folder_append${id}"];
+			if (folder !== void) {
+				// [MEMO] AppendDataConfig.folder_appendX = "xp3-foldername"; or = [ xp3-folder-list ];
+				switch (typeof folder) {
+				case "Object":
+					var found;
+					for (var n = 0; n < folder.count; n++) {
+						if (checkxp3(folder[n], tag)) {
+							found =  folder[n];
+							break;
+						}
+					}
+					folder = found;
+					break;
+				case "String":
+					if (!checkxp3(folder, tag)) folder = void;
+					break;
+				}
+			}
+			var ok = void;
+			if (usearc(tag, folder, checkxp3)) {
+				ok = true;
+				if (multi) {
+					for (var n = 1; n < replace.count; n++) {
+						if (!usearc(replace[n], folder, checkxp3)) ok = false;
+					}
+				}
+				if (fix == "") fix = @"patch_${tag}";
+				usearc(fix, folder, checkxp3);
+			}
+			return ok;
+//		}
+	} incontextof global;
+
+	// グループ排他補正（※事前にxp3有無等をチェックして System.setArgumentで -noappendscn 指定を行っておくこと）
+	//    group =  [ "group_tag1",   [ id1, id2, ... ], "group_tag2",   [...] ]
+	// or group = %[ "group_tag1" => [ id1, id2, ... ], "group_tag2" => [...] ]
+	if (typeof .group == "Object" && .group) {
+		var ext = [];
+		ext.assign(.group);
+		.group = []; // cleanup
+		// 下記のように展開
+		// AppDataConfig.group = [ "group_tag1", "group_tag2", ... ]
+		// AppDataConfig["group_"+group_tag] = [ id1, id2, ... ]
+		// AppDataConfig["idgroup_"+id] = "group_tag"
+		const packed = inXP3archivePacked;
+		const getset = (packed ? // appendが有効かどうかを取得・設定
+						function(id,set) {				
+							if (set === void) return AppendDataConfig.procxp3(id, function(name, dir, checkxp3) {return checkxp3(dir, name); });
+							else if (!set) AppendDataConfig["patch_append"+id] = null; // パッチ自体を無視
+						} :
+						function(id,set) {
+							if (set === void) return System.getArgument("-noappendscn"+id) != "yes";
+							else                     System.setArgument("-noappendscn"+id, set?"no":"yes");
+						}) incontextof global;
+		for (var i = 0; i < ext.count; i+=2) {
+			var tag = ext[i], list = ext[i+1];
+			if (tag != "" && list instanceof "Array" && list.count > 0) {
+				.group.add(tag);
+				conf["group_"+tag] = list;
+				var bits = 0; // bits:list内のインデックス順に id が有効なビットを立てる
+				var first = -1, multids = []; // 自動補正用
+				for (var n = 0; n < list.count; ++n) {
+					var id = list[n];
+					conf["idgroup_"+id] = tag;
+					if (getset(id)) {
+						bits |= (1<<n);
+						if (first < 0) first = n;
+						else multids.add(id);
+					}
+				}
+				if (first < 0) {
+					// すべて無効だった場合はlistの最初の項目を復活／他を無効
+					for (var n = 0; n < list.count; ++n) getset(list[n], !n);
+				} else {
+					// 複数有効の場合はlist内で有効な最初の項目以外は無効にする
+					while (multids.count > 0) getset(multids.pop(), false);
+				}
+			}
+		}
+	}
+}
+
+if (!inXP3archivePacked) {
+	var LoadAppendIndexFile = function(file, err)
+	{
+		dm("LoadAppendIndexFile:" + file);
+		if (typeof err != "Object" || !err) err = function { throw new Exception(...); };
+		if (!Storages.isExistentStorage(file)) return err("ファイルがありません:"+file);
+
+		var CheckValidFolderName = function (dir) 
+		{
+			dir = (string)dir;
+			var m = /[\:\?\*\<\>\|]/.match(dir);
+			if (m && m.count > 0) return void;
+			return dir.replace(/[\\]/g, "/");
+		};
+		var CheckValidFileName = function (file)
+		{
+			return file.replace(/[\/\\\:\?\*\<\>\|]/g, "_");
+		};
+
+		var name = Storages.extractStorageName(file);
+		var r = %[ list:[], sels:[], info:%[] ];
+		var isnum = new RegExp("[1-9][0-9]*");
+		try {
+			var index = [].load(file);
+			for (var i = 0; i < index.count; i++) {
+				var div = index[i].split("\t");
+				var id    = ((string)div[0]).trim();
+				if (id == "" || id.charAt(0) == "#") continue;
+				if (id != "0" && !isnum.test(id)) return err(@"IDは数値を指定してください:${name}:${i+1}:${id}");
+				id = int(+id);
+				if (r.info[id] !== void) return err(@"IDが重複しています:${name}:${i+1}:${id}");
+
+				with (AppendDataConfig) if (id < .min || id > .max)
+					return err(@"IDが規定値外です:${name}:${i+1}:${id}");
+
+				var dir   = ((string)div[1]).trim().toLowerCase();
+				var vdir = CheckValidFolderName(dir);
+				if (vdir == "") return err(@"フォルダ名が不正です:${name}:${i+1}:${dir}");
+
+				var title = ((string)div[2]).trim();
+				if (title == "") title = @"append/${vdir}";
+
+				var output = CheckValidFileName(((string)div[3]).trim());
+				if (output == "") output = @"append_${id}_${vdir.replace(/[\/]/g,'_')}.exe";
+
+				r.list.add(id);
+				r.info[id] = %[ dir:vdir, title:title, output:output ];
+
+				r.sels.add(@"${id}:${title}");
+
+				Debug.notice(id, vdir, title);
+			}
+		} catch(e)
+		{
+			return err(@"ロードに失敗しました:${name}:${e.message}");
+		}
+		return r;
+	} incontextof global;
+
+	{
+		var dsappend = (System.getArgument("-noappendscn") == "yes"); // disableall
+
+		var linked;
+		try {
+			var dll = "PackinOne.dll";
+			Plugins.link(dll) if (CanLoadPlugin(dll));
+			linked = true;
+		} catch {}
+
+		if (linked) {
+			// アペンドディスク用
+			var base = System.exePath + "append/";
+			var index = LoadAppendIndexFile(base + "!appendlist.txt", function(err) { return err; });
+			
+			dm("★index " + index);
+			dm("★base " + base);
+			
+			if (typeof index == "String") System.inform("append_init.tjs:"+index);
+			else with (index) 
+			{
+				// 再帰フォルダ検索
+				var recursive = function (self, base, top) 
+				{
+					if (!Storages.isExistentDirectory(base))
+					{
+						dm("return");
+						return;
+					}
+					dm("*** append add:"+base);
+					
+					Storages.addAutoPath(base);
+					
+					var list = Storages.dirlist(base);
+					for (var i = 0, cnt = list.count; i < cnt; i++) 
+					{
+						var name = (string)(list[i]);
+						if (name == "" || name.charAt(0) == "." || name.charAt(name.length-1) != "/") continue;
+						self(self, base + name);
+					}
+				} incontextof global;
+
+				for (var i = 0, cnt = .list.count; i < cnt; i++) {
+					var id = .list[i];
+					var info = .info[+id];
+					var path = Storages.getFullPath(@"${base}${info.dir}/");
+					if (!Storages.isExistentDirectory(path)) continue;
+					if (debugWindowEnabled) {
+						AppendDataConfig.index = [] if (AppendDataConfig.index === void);
+						AppendDataConfig.index.add(%[ id:id, text:.sels[i] ]);
+					}
+				
+				if(dsappend)dm("dsappend:true");
+				if(System.getArgument("-noappendscn"+id) == "yes")dm("-noappendscn"+id + ":true");
+				
+				if (dsappend || System.getArgument("-noappendscn"+id) == "yes")
+				{
+					continue;
+				}
+					recursive(recursive, path, true);
+					AppendDataConfig.add(id);
+				}
+				
+			}
+		}
+	}
+} else {
+	var proc = function { with (AppendDataConfig) {
+			var usearc = function (name, folder, checkxp3) {
+				var xp3 = ".xp3";
+				if (folder != "") {
+					// [XXX] サブフォルダxp3を登録する
+					if (folder.charAt(folder.length-1) != "/") folder += "/"; // fix last slash
+					var path = typeof System.arcPath != "undefined" ? System.arcPath : System.exePath;
+					var arcname = path + folder + name + xp3;
+					if(Storages.isExistentStorage(arcname)) {
+						archive_exists[name.toLowerCase()] = folder; // [XXX]
+						
+						Storages.addAutoPath(arcname + ">");
+						
+						Debug.notice("AppendSubFoderFound", arcname);
+						return true;
+					}
+					// 見つからない場合は通常処理
+				}
+				useArchiveIfExists(name + xp3);
+				return archive_exists[name.toLowerCase()];
+			} incontextof global;
+		for (var i = .min; i <= .max; i++) {
+			if (.procxp3(i, usearc) !== void) .add(i); // [NOTE] falseでも許可
+		}
+	} } incontextof global;
+	// 遅延呼びがあるかどうかで場合分け
+	if (typeof global.patch_aftercall != "Object") proc(); // ない場合は即呼び
+	else              patch_aftercall.add(proc); // ある場合は patch*.xp3 登録後に呼び出し
+}
+// アペンド固有の AppConfig_*.tjs のマージ更新処理
+function UpdateAppendAppConfig() {
+	if (AppendDataExists) {
+		var merge = %[];
+		ForeachAppendFileList("AppConfig.tjs", function(file, merge) {
+			var context = global.ENV_context = %[];
+			Scripts.execStorage(file);
+			delete global.ENV_context;
+			var ext = [];
+			ext.assign(context);
+			for (var i = 0; i < ext.count; i+=2) {
+				var key = ext[i], value = ext[i+1];
+				if (key == "" || value === void) continue;
+				if (typeof global[key] != "undefined" && global[key] != value) {
+					if (typeof merge[key] != "undefined") value = void;
+					merge[key] = value;
+				}
+			}
+		} incontextof global, merge);
+		var ext = [];
+		ext.assign(merge);
+		for (var i = 0; i < ext.count; i+=2) {
+			var key = ext[i], value = ext[i+1];
+			if (key == "" || value === void) continue;
+			Debug.message(@"UpdateAppendAppConfig:${key}:${global[key]}=>${value}");
+			global[key]  = value;
+		}
+	}
+}
+// append_setup_*.tjs 等の初期化処理（custom.tjsの末尾などで呼ぶ）
+function SetupAppendData(elm) {
+	if (AppendDataExists) {
+		ForeachAppendFileList("append_setup.tjs", function(file) {
+			dm("AppendSetup", file);
+			KAGLoadScript(file);
+		} incontextof global);
+		ForeachAppendFileList("append_setup.ks", function(file, hooks) {
+			var tag = Storages.chopStorageExt(file).reverse(), patch = "_patch".reverse();
+			// [XXX] 末尾_patchを削除
+			var plen = patch.length;
+			if (tag.length > plen && tag.substr(0, plen) == patch) tag = tag.substr(plen);
+			// [XXX] IDを取得
+			var idx = tag.indexOf("_");
+			if (idx > 0) tag = tag.substr(0, idx);
+			var id = int(tag.reverse());
+			if (hooks) for (var i = 0, cnt = hooks.count; i < cnt; i++) {
+				var hook = hooks[i];
+				SystemHook.kagAdd(%[ name:hook+".append"+id, storage:file, target:"*"+hook, call:true ]);
+			}
+		} incontextof global, AppendDataConfig.setuphook);
+	}
+	if (debugWindowEnabled && !inXP3archivePacked) {
+		if (!(elm && elm.nodebugmenu)) {
+			SystemArgumentInfo.noappendscn = %[ type:"Boolean", changed:function(info) {
+				if (info) with (info) {
+					System.inform("設定は再起動後に有効となります") if (!.dialog);
+					.dialog = true;
+				}
+//				var en = System.getArgument("-noappendscn") != "yes";
+//				try { kag.appendScnSubMenu.enabled = en; } catch {}
+			} incontextof global ];
+			addKagHookCallback("onKAGSetupMenu", function {
+//				var children = [];
+				var index = AppendDataConfig.index;
+				if (index) for (var i = 0, cnt = index.count; i < cnt; i++) {
+					var id, text;
+					with (index[i]) id=.id, text=.text;
+					SystemArgumentInfo["noappendscn"+id] = %[ type:"Boolean"
+//															  , restart:true
+															  ];
+//					children.add(getSysArgCheckMenuItem("noAppendScnMenuItem"+id, text, "noappendscn"+id, true, "no", "no", "yes"));
+				}
+				@if (0)
+				var en = System.getArgument("-noappendscn") != "yes";
+				createMenuFromList(this, debugMenu, [
+					getSysArgCheckMenuItem("noAppendScnMenuItem", "追加要素を有効", "noappendscn", true, "no", "no", "yes"),
+					%[  name:"appendScnSubMenu", caption:"追加要素の個別指定", children:children, prop:%[ enabled:en ] ],
+					"-",
+					]);
+				@endif
+				@if (1)
+				createMenuFromList(this, debugMenu, [
+					%[  name:"AppendScnSelectMenuItem", caption:"追加要素を選択", exp:"SetupAppendData.SelectAppendTarget()" ],
+					"-",
+					]);
+				with (this.AppendScnSelectMenuItem) {
+					.checked = !!AppendDataExists;
+					.enabled = index && index.count > 0;
+				}
+				@endif
+			}, true);
+		}
+	}
+
+	// [HACK] 追加シナリオ分の *.csv 読み込み処理
+	if (!(elm && elm.nocsvhack)) with (UiBasedPageSheet) {
+		&.readCsv = function(file) {
+			var csv = new CSVParser();
+			with (csv) {
+				.owner = this;
+				.cur  = void;
+				.tags =  [];
+				.map  = %[];
+				.doLine = function(c, n) {
+					var first = (c && c.count > 0) ? c[0].charAt(0) : void;
+					if (first == "" || first == "#") return;
+					var store = true;
+					if (first == ":") {
+						var tag = ((string)c[1]).trim();
+						if (tag != "") {
+							if (map[tag] === void) {
+								tags.add(tag);
+								map[tag] = [];
+							}
+							cur = tag;
+							store = false;
+						}
+					}
+					if (store) {
+						if (cur == "") owner.readCsvDoLine(c);
+						else map[cur].add(c);
+					}
+				} incontextof csv;
+				.parseStorage(file);
+				if (typeof this.onBeforeAppendCsvParse == "Object") {
+					/**/   this.onBeforeAppendCsvParse(file, .cur, .tags, .map);
+				}
+				.resetcur = .cur;
+				ForeachAppendFileList(file, function(file) {
+					this.cur = this.resetcur;
+					this.parseStorage(file);
+				} incontextof csv);
+
+				if (typeof this.onAfterAppendCsvParse == "Object") {
+					/**/   this.onAfterAppendCsvParse(file, .cur, .tags, .map);
+				}
+				while (.tags.count > 0) {
+					var tag = .tags.shift();
+					var list = .map[tag];
+					readCsvDoLine([ ":", tag ]);
+					for (var i = 0, cnt = list.count; i < cnt; i++) {
+						readCsvDoLine(list[i]);
+					}
+				}
+			}
+			invalidate csv;
+		} incontextof null;
+	}
+
+	return;
+	// デバッグメニュー用
+	function SelectAppendTarget() {
+		function local {
+			class Dialog extends WIN32GenericDialogEX {
+				function Dialog(list = AppendDataConfig.index, width=150) {
+					this.noappend = first = System.getArgument("-noappendscn") == "yes";
+					this.list = list;
+					super.WIN32GenericDialogEX(%[
+					width:width, title:System.title, padding:6, itemtexts:itemTexts
+						]);
+					addToggle("AppendEnabled");
+					nextLine();
+					beginGroup("追加要素対象"); {
+						_cury -= 13; // [XXX]
+						addButton("AllON",  makeDiv(1, 3), 6); getLastItem().x += 8;
+						addButton("AllOFF", makeDiv(2, 3), 6); getLastItem().x += 8;
+						nextLine(0);
+						for (var i = 0; i < list.count; i++) {
+							var id = list[i] ? list[i].id : -1;
+							var ignore = (id >= 0 && AppendDataConfig["idignore_"+id]);
+							nextLine() if !ignore;
+							addToggle(%[ id:"Append"+i, text:getAppendTitle(i) ]);
+							if (ignore) getLastItem().style &= ~WS_VISIBLE;
+						}
+						nextLine();
+					} endGroup();;
+					nextLine();
+					addDefPush(IDOK,    makeStepRight(1, 50), 10);
+					addButton(IDCANCEL, makeStepRight(0, 50), 10);
+				}
+				var itemTexts = %[
+					IDOK => "OK", IDCANCEL => "Cancel",
+					"AppendEnabled" => "追加要素を使用する", 
+					"AllON" => "全ON", 
+					"AllOFF" => "全OFF", 
+					];
+				var first, noappend, list;
+				function onCommand(msg, wp, lp) {
+					var notify = wp >>16, id = wp & 0xFFFF;
+					var name = getNamedId(id);
+					switch (name) {
+					case "AllON":
+					case "AllOFF":
+						if (notify == BN_CLICKED) {
+							for (var i = 0; i < list.count; i++) {
+								setCheckBox("Append"+i, name == "AllON");
+							}
+							fixAppendGroup();
+							return true;
+						}
+						break;
+					case "AppendEnabled":
+						if (notify == BN_CLICKED) {
+							noappend = !getCheckBox(id);
+							UpdateNoAppendItems();
+							return true;
+						}
+						break;
+					default:
+						if (notify == BN_CLICKED && typeof name == "String" && name != "") {
+							const prefix = "Append", len = prefix.length;
+							if (name.substr(0,len) == prefix) fixAppendGroup(+name.substr(len));
+						}
+						break;
+					}
+					return super.onCommand(...);
+				}
+				function fixAppendGroup(idx) {
+					function proc(list, bits, keep) {
+						if (!list) return; // ignore
+						if (bits != 0 && ((bits-1) & bits) == 0) return; // 1bit on
+						if (keep === void) keep = list[0];
+						for (var n = 0; n < list.count; ++n) {
+							var i = list[n];
+							setCheckBox("Append"+i, (i == keep));
+						}
+					}
+					var allgrp = [], map = %[], bits = %[], selgrp;
+					for (var i = 0; i < list.count; ++i) {
+						var grp = getAppendGroup(i);
+						if (idx !== void && idx === i) {
+							if (grp == "") return; // 何もしなくてOK
+							selgrp = grp; // 変更のあったグループ
+						}
+						if (grp == "") continue;
+						allgrp.add(grp);
+						var ref = map[grp];
+						if (ref === void)
+							ref = map[grp] = [];
+						bits[grp] |= (1<<(ref.count)) if (getCheckBox("Append"+i));
+						ref.add(i);
+					}
+					if (selgrp != "") proc(map[selgrp], bits[selgrp], idx);
+					else for (var n = 0; n < allgrp.count; ++n) {
+						var grp = allgrp[n];
+						proc(map[grp], bits[grp]);
+					}
+				}
+				function getAppendGroup(n) {
+					var id  = list[n] ? list[n].id : -1;
+					return (id >= 0) ? AppendDataConfig["idgroup_"+id] : void;
+				}
+
+				function onInit() {
+					super.onInit(...);
+					setCenterPosition(global.Window.mainWindow);
+					setCheckBox(   "AppendEnabled", !noappend);
+					setItemEnabled("AppendEnabled", false) if AppendDataConfig.AlwaysEnabled;
+					UpdateNoAppendItems();
+					UpdateAppendItemChecked();
+				}
+				function UpdateNoAppendItems() {
+					for (var i = 0; i < list.count; i++) {
+						setItemEnabled("Append"+i, !noappend);
+					}
+				}
+				function getAppendTitle(n) {
+					return list[n] ? list[n].text : "append%d".sprintf(n);
+				}
+				function getAppendDisabled(n) {
+					var id  = list[n] ? list[n].id : -1;
+					if (id < 0) return -1;
+					var ds =  System.getArgument("-noappendscn"+id) == "yes";
+					return ds;
+				}
+				function setAppendDisabled(n, ds) {
+					var id  = list[n] ? list[n].id : -1;
+					if (id >= 0) setSysArg("noappendscn"+id, ds ? "yes" : "no");
+				}
+				function UpdateAppendItemChecked() {
+					for (var i = 0; i < list.count; i++) {
+						var ds = getAppendDisabled(i);
+						setCheckBox("Append"+i, !ds);
+					}
+				}
+				function open() {
+					var r = super.open(...);
+					if (r.result == IDOK) {
+						var map = r.items, mod = false;
+						for (var i = 0; i < list.count; i++) {
+							var now = getAppendDisabled(i);
+							var set = !map["Append"+i];
+							if (now >= 0 && now != set) {
+								setAppendDisabled(i, set);
+								mod = true;
+							}
+						}
+						if (first != noappend || mod) {
+							setSysArg("noappendscn", noappend ? "yes" : "no");
+							mod = true;
+						}
+						return mod;
+					}
+				}
+				function setSysArg(tag, val) {
+					setSysArgMenuItem(tag, val);
+				}
+			}
+		}
+		var dlg = new local.Dialog(, AppendDataConfig.dialogWidth);
+		var r = dlg.open(kag);
+		invalidate dlg;
+		return r;
+	}
+}
+
+// アペンド系ファイル(*_{id}.*)に対するコールバック
+function ForeachAppendFileList(file, cb, *) {
+	if (AppendDataExists) with (AppendDataConfig) {
+		if (.list) {
+			var list = .list;
+			var base = Storages.chopStorageExt(file), ext = Storages.extractStorageExt(file);
+			var used = [];
+			for (var i = 0, cnt = list.count; i < cnt; i++) {
+				var id = list[i];
+				var ovr = base + "_"+id+ ext;
+				used[id] = true;
+				if (Storages.isExistentStorage(ovr)) {
+					var fix = base + "_"+id+"_patch"+ ext;
+					//dm("fixname", fix);
+					if (Storages.isExistentStorage(fix)) ovr = fix;
+					//dm("ForeachAppendFileList", ovr);
+					cb(ovr, *);
+				}
+			}
+			if (debugWindowEnabled) {
+				for (var i = .min; i <= .max; i++) {
+					if (!used[i]) {
+						var ovr = base + "_"+i+ ext;
+						if (Storages.isExistentStorage(ovr)) {
+							Debug.notice("*** アペンド範囲外にアペンド用ファイルを発見しました:",
+										 i, Storages.getPlacedPath(ovr));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+// デバッグシナリオ開始のポップアップのアペンド対応
+function myExecPopupLoadList(file) {
+	var r = [];
+	r.load(file);
+	ForeachAppendFileList(file, function(ovr, r, opt) {
+		var tmp = [];
+		tmp.load(ovr);
+		if (tmp.count > 0) {
+			if (opt.first) {
+				opt.first = false;
+				r.add("-");
+			}
+			r.push(tmp*);
+		}
+	}, r, %[ first:true ]);
+	return r;
+}
+
+// 有効なアペンドIDに対するコールバック
+function ForeachAppendIDList(cb, *) {
+	if (AppendDataExists) with (AppendDataConfig) {
+		if (.list) for (var i = 0, cnt = .list.count; i < cnt; i++) {
+			cb(.list[i], *);
+		}
+	}
+}
+
+// アペンド単位でフォーマットつき文字列を展開する
+// [emb escape=false exp='ExtractAppendTagMacro("[syshook name=setup.append${id}]")']
+function ExtractAppendTagMacro(format) {
+	var temp = %[ ret:"" ];
+	ForeachAppendIDList(function (id, format, elm) {
+		elm.ret += applyInlineStringVariableExtract(format, %[ id:id ]);
+	}, format, temp);
+	//dm("ExtractAppendTagMacro", temp.ret);
+	return temp.ret;
+}
+

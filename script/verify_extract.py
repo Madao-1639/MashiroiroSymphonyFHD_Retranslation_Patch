@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tool import scn, xp3
+from tool import textset, scn, xp3
 
 # dummy.txt.scn is a developer scratch file: its page lengths do not track the text.
 LENGTH_EXEMPT = {"dummy.txt"}
@@ -44,7 +44,7 @@ def main():
     scripts = index["scripts"]
     totals = index["totals"]
 
-    # ---- messages.jsonl
+    # ---- per-script messages
     n_msg = n_page = 0
     per_script = collections.Counter()
     per_script_pages = collections.Counter()
@@ -53,7 +53,7 @@ def main():
     empty_text = 0
     plain_eq = 0
     plain_diff = 0
-    for rec in load_jsonl(os.path.join(args.data, "messages.jsonl")):
+    for rec in textset.iter_records(args.data, textset.MESSAGES):
         n_msg += 1
         name = rec["script"]
         per_script[name] += 1
@@ -104,8 +104,8 @@ def main():
             errors.append(f"{name}: {cnt} pages where length != utf16len(text)")
     warnings.append(f"plain vs text\\n-less: equal={plain_eq} differ={plain_diff}")
 
-    # ---- selects.jsonl
-    n_sel = sum(1 for _ in load_jsonl(os.path.join(args.data, "selects.jsonl")))
+    # ---- per-script selects
+    n_sel = sum(1 for _ in textset.iter_records(args.data, textset.SELECTS))
     n_sel_index = sum(v["selects"] for v in scripts.values())
     if n_sel != n_sel_index:
         errors.append(f"selects {n_sel} != index {n_sel_index}")

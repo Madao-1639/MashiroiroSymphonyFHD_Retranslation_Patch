@@ -19,9 +19,7 @@ Steam 版全部 xp3 使用 wamsoft 的 Hxv4 变体（容器结构见 [file-forma
 
 ## 2. 密码学细节
 
-- 算法是 **XChaCha20-Poly1305，内层 ChaCha20 为 DJB 布局**：64 位计数器 + 64 位 nonce，
-  **不是** RFC 8439 的 IETF 布局。
-  ※ 对 counter < 2³²，两种布局的 state 前两个字相同，不能用「能解开」区分实现是否正确。
+- 算法是 **XChaCha20-Poly1305，内层 ChaCha20 为 DJB 布局**：64 位计数器 + 64 位 nonce，**不是** RFC 8439 的 IETF 布局。※ 对 counter < 2³²，两种布局的 state 前两个字相同，不能用「能解开」区分实现是否正确。
 - 子密钥与 MAC：
 
 ```
@@ -31,8 +29,7 @@ poly_key = ChaCha20Block(subkey, counter=0, nonce[16:24])[0:32]
 tag      = Poly1305(poly_key, ct ‖ pad16 ‖ LE64(0) ‖ LE64(len(ct)))      # 无 AAD
 ```
 
-- 原语正确性用公开向量回归：Poly1305（RFC 7539 §2.5.2）、ChaCha20 块（§2.3.2）、
-  HChaCha20（draft-irtf-cfrg-xchacha §2.2.1）→ `script/verify_crypto.py`
+- 原语正确性用公开向量回归：Poly1305（RFC 7539 §2.5.2）、ChaCha20 块（§2.3.2）、HChaCha20（draft-irtf-cfrg-xchacha §2.2.1）→ `script/verify_crypto.py`
 
 ## 3. 内容层：DRIP VM + 四层 XOR
 
@@ -44,10 +41,8 @@ key64 ──DRIP(key64, open_flag)──> 48B 种子状态 ──> 四层 XOR �
 
 **DRIP VM**：
 
-- 128 条 lane 程序，每条是 `(param, opcode)` 序列；opcode 以模块 RVA 标识，共 21 种
-  （加/减/乘/移位/按位组合/查表/递归/停机…）
-- 1024+ 项 dword 查表；`get64(v)` 的低半 = 对 `v >> 7` 求 `lane[v & 0x7F]`，
-  高半 = 同一条 lane 对 `~seed` 求值
+- 128 条 lane 程序，每条是 `(param, opcode)` 序列；opcode 以模块 RVA 标识，共 21 种（加/减/乘/移位/按位组合/查表/递归/停机…）
+- 1024+ 项 dword 查表；`get64(v)` 的低半 = 对 `v >> 7` 求 `lane[v & 0x7F]`，高半 = 同一条 lane 对 `~seed` 求值
 
 **48 字节种子状态**：
 
@@ -81,8 +76,7 @@ key64 ──DRIP(key64, open_flag)──> 48B 种子状态 ──> 四层 XOR �
 | `hash_domain` | 字符串 | 名字哈希的盐 | `xp3hnp` |
 | `hash_key` | 32 B | keyed `file_hash` 变体 | 本作不使用（key_len = 0） |
 
-落地格式：`resource/hxv4/profile_live.json`（字段名 `hxv4_key` / `hxv4_nonce0` / `hxv4_nonce1` /
-`holder_words` / `context_u32` / `lanes` / `hash_domain`，`source_module_base` 为 0 表示 lane 已归一）。
+落地格式：`resource/hxv4/profile_live.json`（字段名 `hxv4_key` / `hxv4_nonce0` / `hxv4_nonce1` / `holder_words` / `context_u32` / `lanes` / `hash_domain`，`source_module_base` 为 0 表示 lane 已归一）。
 **参数与游戏构建绑定**：游戏更新后必须重抓。
 
 ## 5. 参数获取：只能从运行中的进程读
@@ -91,26 +85,25 @@ key64 ──DRIP(key64, open_flag)──> 48B 种子状态 ──> 四层 XOR �
 `script/capture_live_crypto.py` 的流程：
 
 1. **必须从调试器启动游戏**（附加太晚，启动阶段已经算完）
-2. 在 `LoadLibraryW` 下断 → 认出随机十六进制命名的 bootstrap 模块 → `StepOut` 取基址 →
-   在 `base + 0xE2D0`（ManagerCtor）/ `+0x15630`（BootstrapDerive）/ `+0x157D0`（ArchiveDerive）布点
-   **【跨作需重验：RVA 随构建变化】**
-3. 命中 `BootstrapDerive` → 记录实参（bootstrap 路径、`PARAMS` 字节）→ `StepOut` 读 manager core：
-   `core+0` 6 个 holder words、`core+0x3038` key、`+0x3058` nonce1、`+0x3078` nonce0
-4. 顺 `holder[0]`（= `drip_impl`）取 context 表（`drip_impl + 0x10` 指向）与 128 条 lane
-   （`drip_impl + 0x04` 起、每条 0x10 字节描述）
+2. 在 `LoadLibraryW` 下断 → 认出随机十六进制命名的 bootstrap 模块 → `StepOut` 取基址 →在 `base + 0xE2D0`（ManagerCtor）/ `+0x15630`（BootstrapDerive）/ `+0x157D0`（ArchiveDerive）布点**【跨作需重验：RVA 随构建变化】**
+3. 命中 `BootstrapDerive` → 记录实参（bootstrap 路径、`PARAMS` 字节）→ `StepOut` 读 manager core：`core+0` 6 个 holder words、`core+0x3038` key、`+0x3058` nonce1、`+0x3078` nonce0
+4. 顺 `holder[0]`（= `drip_impl`）取 context 表（`drip_impl + 0x10` 指向）与 128 条 lane（`drip_impl + 0x04` 起、每条 0x10 字节描述）
 5. 写 `profile_live.json`
 
-**静态派生不可信**：从 exe 静态派生出的 key 能把映射表解成合法 TJSON，但**内容全解不开**；
-其 context 表也与游戏实际使用的不一致（128 条 lane 倒是一致）。实测差异：
-派生 key `e3fd3f3d…` vs 真值 `95d4af8a…`。
+**操作要点（x32dbg 侧）**
+
+- 调试器 MCP 端点 `http://127.0.0.1:50301/mcp`，客户端 `tool/x32dbg_mcp.py`；常用工具：`GetAllModulesFromMemMap`、`GetAllRegisters`、`SetBreakpoint`（参数名是 `target` 不是 `address`）、`ReadDismAtAddress`、`FindAllMem`（支持 `??` 通配）、`SearchForStrings`、`run`/`StepInto`/`StepOver`/`StepOut`。
+- 返回的地址/数值是**十进制**（虽然带 `0x` 前缀看起来像十六进制），解析时按十进制读。
+- 没有"读 N 字节"接口：`ReadDismAtAddress` 是唯一取原始字节的途径，按绝对地址把每行反汇编的字节列回填（长指令会截断字节列），实现在 `tool/x32dbg_mcp.py::read_bytes`。
+- 需要从 64 位 Python 调 32 位 DLL 的导出时，`ctypes.WinDLL` 会报 `[WinError 193]`；改用 **32 位 PowerShell**（`C:\Windows\SysWOW64\WindowsPowerShell1.0\powershell.exe`）+ `Add-Type` 现场编译 C# P/Invoke 包装。`GlobalAlloc`/`GlobalLock` 的 `restype` 要声明 `c_void_p`，`PostMessageW`/`SendMessageW` 的 `wParam` 要声明 `c_size_t`。
+
+**静态派生不可信**：从 exe 静态派生出的 key 能把映射表解成合法 TJSON，但**内容全解不开**；其 context 表也与游戏实际使用的不一致（128 条 lane 倒是一致）。实测差异：派生 key `e3fd3f3d…` vs 真值 `95d4af8a…`。
 
 ## 6. 判据与不变量
 
 1. **Poly1305 tag 通过 ⇒ 映射表 key/nonce 正确**（强判据，错一位即失败）
-2. **内容仍乱 ⇒ DRIP 的 context 表或 holder 不对**（不是过滤器代码问题）
-   - context 错时，个别 key 会碰巧走到「不查表」的 lane 上 → 表现为「只有少数条目能解」
-3. **记录绑定用 `packed & 0xFFFF`（条目下标）+ offset**，`offset` = 是否存在字面 `startup.tjs` 条目；
-   绑定后校验「每条记录落到唯一条目、除 entry 0 外每个条目都有记录」
+2. **内容仍乱 ⇒ DRIP 的 context 表或 holder 不对**（不是过滤器代码问题）- context 错时，个别 key 会碰巧走到「不查表」的 lane 上 → 表现为「只有少数条目能解」
+3. **记录绑定用 `packed & 0xFFFF`（条目下标）+ offset**，`offset` = 是否存在字面 `startup.tjs` 条目；绑定后校验「每条记录落到唯一条目、除 entry 0 外每个条目都有记录」
 4. 条目 0（警告图）不过滤
 5. 离线结果必须与另一条独立路径（游戏内注入式解包）**逐字节比对**
 
@@ -123,10 +116,13 @@ key64 ──DRIP(key64, open_flag)──> 48B 种子状态 ──> 四层 XOR �
 | 全量文本提取（`patch` + `data` + `data_fhd`，简中域） | 202 脚本 / 53,218 对白，与注入式结果一致且多 3 个脚本 |
 | 其它归档（`evimage` / `voice` / `video` / `patch2`） | PNG / OGG 等首部均可识别 |
 
-## 8. 名字层（未启用，供参考）
+## 8. 名字层（已用于补丁条目命名）
 
-- `file_hash = BLAKE2s-256(UTF-16LE(名字) + UTF-16LE(盐))`，盐 = `hash_domain`
+- `file_hash = BLAKE2s-256(UTF-16LE(名字) + UTF-16LE(盐))`，盐 = `hash_domain`（本作 `xp3hnp`）
 - `dir_hash = SipHash-2-4(同上输入)`
 - keyed 变体（`hash_key` 参与）在本作未启用（`key_len = 0`）
 
-本项目不需要真名：脚本自带 `root["name"]`，解包产物按 `domain/file_hash` 命名即可。
+用途有两个：
+
+1. **解包产物命名**：脚本自带 `root["name"]`，产物按 `domain/file_hash` 命名即可（不需要真名反查）；
+2. **验证补丁条目名**（阶段 4）：把改好的脚本以真名 `<script>.scn` 打进明文 xp3，引擎会用同样的哈希去查表。本项目逐条断言 `blake2s(utf16le("<script>.scn") + utf16le("xp3hnp"))` == 该脚本在 Steam 简中域条目里的 `file_hash`（199/199 通过，`script/writeback.py verify`）。

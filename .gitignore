@@ -1,9 +1,8 @@
-# 生成物与临时文件
 __pycache__/
 *.pyc
 tmp/
+releases/
 
-# 本地环境（MCP 端点、编辑器/助手私有配置）
 .mcp.json
 *.local.*
 .pi

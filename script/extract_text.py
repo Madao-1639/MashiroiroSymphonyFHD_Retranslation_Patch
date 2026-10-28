@@ -4,9 +4,9 @@ Usage (from project root):
     # plain xp3 (the CN fan patch) -- no profile needed
     mamba run -n GalRev python script/extract_text.py <a.xp3> [<b.xp3> ...] --out resource/chs_text
     # encrypted (Hxv4) archives -- needs the captured profile
-    mamba run -n GalRev python script/extract_text.py <a.xp3> ...         --profile resource/hxv4/profile_live.json --domain 9D31BC7AA367A8F1 --out resource/steam_text
+    mamba run -n GalRev python script/extract_text.py <a.xp3> ...         --profile resource/hxv4/profile_live.json --domain 9D31BC7AA367A8F1 --out resource/steam_text_zhcn
     # from an unpacked directory of hash-named files (script/unpack_xp3.py output)
-    mamba run -n GalRev python script/extract_text.py <unpacked dir> --out resource/steam_text
+    mamba run -n GalRev python script/extract_text.py <unpacked dir> --out resource/steam_text_zhtw
 
 When the same script appears in more than one container, the copy from the
 *later* container wins (krkrz loads archives in ascending name order and the last
@@ -15,22 +15,24 @@ overrides `data.xp3`). Every copy is recorded in `_index.json` -> `duplicate_cop
 so an override is visible instead of silent.
 
 Outputs (inside --out):
-    messages.jsonl   one record per message row (with per-page string slot indexes)
-    messages.tsv     flat review sheet: id <tab> speaker <tab> text
-    selects.jsonl    choice labels
+    scripts/<script>.jsonl          one record per message row (per-script split)
+    （数据按脚本分文件，直接用任意编辑器/jq 翻开单个脚本即可）
+    scripts/<script>.selects.jsonl  choice labels (only if any)
     _index.json      per-script summary (name, hash, scenes, counts, anomalies)
 """
 
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tool import hxv4, scn, xp3
+from tool import hxv4, textset, scn, xp3
 
 
 def _looks_like_script(head: bytes) -> bool:
@@ -38,7 +40,7 @@ def _looks_like_script(head: bytes) -> bool:
     return head in (b"PSB" + bytes([0]), b"mdf" + bytes([0]))
 
 
-def iter_scn_from_xp3(path, profile=None):
+def iter_scn_from_xp3(path, profile=None, domains=None):
     """Yield (arcname, data) for every script in one archive.
 
     Plain xp3 is read directly; Hxv4 archives need `profile` (see script/unpack_xp3.py).
@@ -57,11 +59,14 @@ def iter_scn_from_xp3(path, profile=None):
             arc = None
         if arc is not None:
             for entry in arc.entries:
+                rec = entry.record
+                domain = binascii.hexlify(rec.domain_hash).decode() if rec else ""
+                if domains and domain not in domains:
+                    continue  # skip other language domains before paying the decrypt cost
                 data = arc.read_entry(entry)
                 if not _looks_like_script(data[:4]):
                     continue
-                rec = entry.record
-                arcname = (f"{binascii.hexlify(rec.domain_hash).decode()}/"
+                arcname = (f"{domain}/"
                            f"{binascii.hexlify(rec.file_hash).decode()}") if rec else entry.name
                 yield arcname, data
             return
@@ -105,20 +110,31 @@ def iter_scn_from_dir(path):
 def split_container(src, arcname):
     """(container, domain) for a file.
 
-    For xp3 input the container is the archive name and there is no domain.
+    For xp3 input the container is the archive name; the Hxv4 hash domain (which for this
+    game doubles as the language split) is carried in the arcname produced by
+    ``iter_scn_from_xp3`` as ``<domain>/<filehash>``.  Dropping it there silently disabled the
+    ``--domain`` filter and let an arbitrary domain win the duplicate-copy race
+    (doc/lessons-learned.md §10).
     For an unpacked directory the layout is `<archive>/<domain>/<filehash>`
-    (script/unpack_xp3.py output); the middle level is the Hxv4 hash domain, which for this
-    game doubles as the language split (one Chinese, one Traditional Chinese and one
-    English domain carry the whole script set).
+    (script/unpack_xp3.py output).
     """
+    parts = [p for p in arcname.split("/") if p]
     if src.lower().endswith(".xp3"):
-        return os.path.basename(src), ""
-    parts = arcname.split("/")
+        domain = parts[0] if len(parts) >= 2 and _looks_like_domain(parts[0]) else ""
+        return os.path.basename(src), domain.lower()
     if len(parts) >= 3:
-        return parts[0], parts[1]
+        return parts[0], parts[1].lower()
     if len(parts) == 2:
         return parts[0], ""
     return os.path.basename(src), ""
+
+
+_DOMAIN_RE = re.compile(r"^[0-9A-Fa-f]{16}$")
+
+
+def _looks_like_domain(text):
+    """Hxv4 domain keys in this game are 16 hex chars (e.g. `9D31BC7AA367A8F1`)."""
+    return bool(_DOMAIN_RE.match(text))
 
 
 def gather(inputs, domains=None, skipped=None, profile=None):
@@ -131,7 +147,7 @@ def gather(inputs, domains=None, skipped=None, profile=None):
     candidates: dict[str, list] = {}
     for src in inputs:
         if src.lower().endswith(".xp3"):
-            source = iter_scn_from_xp3(src, profile)
+            source = iter_scn_from_xp3(src, profile, domains)
         else:
             source = iter_scn_from_dir(src)
         for arcname, data in source:
@@ -149,7 +165,12 @@ def gather(inputs, domains=None, skipped=None, profile=None):
                 continue
             name = sf.script_name or os.path.basename(arcname)
             container, domain = split_container(src, arcname)
-            if domains and domain and domain not in domains:
+            if domains and not domain:
+                # an unfilterable candidate would make `--domain` a silent no-op
+                raise ValueError(
+                    f"cannot tell the Hxv4 domain of {arcname!r} from {src}: "
+                    "refusing to apply --domain blindly")
+            if domains and domain not in domains:
                 continue
             candidates.setdefault(name, []).append({
                 "container": container,
@@ -173,104 +194,100 @@ def main():
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
-    msgs_path = os.path.join(args.out, "messages.jsonl")
-    tsv_path = os.path.join(args.out, "messages.tsv")
-    sel_path = os.path.join(args.out, "selects.jsonl")
     idx_path = os.path.join(args.out, "_index.json")
 
     skipped: list[str] = []
     profile = hxv4.Hxv4Profile.load_json(args.profile) if args.profile else None
-    candidates = gather(args.inputs, args.domain, skipped, profile)
+    wanted = {d.lower() for d in args.domain} if args.domain else None
+    candidates = gather(args.inputs, wanted, skipped, profile)
     index = {}
     dupes = []
     n_msg = n_page = n_sel = 0
 
-    with open(msgs_path, "w", encoding="utf-8", newline="\n") as fm, \
-         open(tsv_path, "w", encoding="utf-8", newline="\n") as ft, \
-         open(sel_path, "w", encoding="utf-8", newline="\n") as fs:
-        ft.write("id\tscript\tscene\trow\tpage\tspeaker\tvoice\ttext\n")
-        for name in sorted(candidates):
-            copies = candidates[name]
-            # archive priority: krkrz registers archives by ascending file name and
-            # the last registered one is searched first, so keep the last copy.
-            copies.sort(key=lambda c: (c["container"], c["domain"]))
-            winner = copies[-1]
-            if len(copies) > 1:
-                dupes.append({
-                    "script": name,
-                    "winner": f'{winner["container"]}/{winner["domain"]}'.rstrip("/"),
-                    "overridden": [{"container": f'{c["container"]}/{c["domain"]}'.rstrip("/"),
-                                    "hash": c["hash"],
-                                    "same_content": c["hash"] == winner["hash"]}
-                                   for c in copies[:-1]],
-                })
-            sf = scn.ScnFile(winner["data"])
-            info = {
-                "container": winner["container"],
-                "domain": winner["domain"],
-                "arcname": winner["arcname"],
-                "hash": sf.script_hash,
-                "scenes": [sf.scene_label(s) for s in sf.scenes],
-                "messages": 0,
-                "pages": 0,
-                "selects": 0,
-                "length_mismatch": 0,
-                "missing_plain": 0,
+    for name in sorted(candidates):
+        copies = candidates[name]
+        # archive priority: krkrz registers archives by ascending file name and
+        # the last registered one is searched first, so keep the last copy.
+        copies.sort(key=lambda c: (c["container"], c["domain"]))
+        winner = copies[-1]
+        if len(copies) > 1:
+            dupes.append({
+                "script": name,
+                "winner": f'{winner["container"]}/{winner["domain"]}'.rstrip("/"),
+                "overridden": [{"container": f'{c["container"]}/{c["domain"]}'.rstrip("/"),
+                                "hash": c["hash"],
+                                "same_content": c["hash"] == winner["hash"]}
+                               for c in copies[:-1]],
+            })
+        rows, sels = [], []
+        sf = scn.ScnFile(winner["data"])
+        info = {
+            "container": winner["container"],
+            "domain": winner["domain"],
+            "arcname": winner["arcname"],
+            "hash": sf.script_hash,
+            "scenes": [sf.scene_label(s) for s in sf.scenes],
+            "messages": 0,
+            "pages": 0,
+            "selects": 0,
+            "length_mismatch": 0,
+            "missing_plain": 0,
+        }
+        for msg in sf.iter_messages():
+            n_msg += 1
+            info["messages"] += 1
+            rec = {
+                "script": name,
+                "scene": msg.label,
+                "row": msg.row,
+                "speaker": msg.speaker,
+                "flag": msg.flag,
+                "pages": [],
             }
-            for msg in sf.iter_messages():
-                n_msg += 1
-                info["messages"] += 1
-                rec = {
-                    "script": name,
-                    "scene": msg.label,
-                    "row": msg.row,
-                    "speaker": msg.speaker,
-                    "flag": msg.flag,
-                    "pages": [],
-                }
-                for p in msg.pages:
-                    n_page += 1
-                    info["pages"] += 1
-                    if not p.length_ok:
-                        info["length_mismatch"] += 1
-                    if p.plain is None:
-                        info["missing_plain"] += 1
-                    rec["pages"].append({
-                        "page": p.index,
-                        "text": p.text,
-                        "text_idx": p.text_idx,
-                        "plain": p.plain,
-                        "plain_idx": p.plain_idx,
-                        "len": p.length,
-                        "alt_speaker": p.alt_name,
-                        "alt_speaker_idx": p.alt_name_idx,
-                        "voice": p.voice,
-                        "char_id": p.char_id,
-                    })
-                    mid = f"{name}|{msg.label}|{msg.row}|{p.index}"
-                    ft.write("\t".join([
-                        mid, name, msg.label, str(msg.row), str(p.index),
-                        msg.speaker or "", p.voice or "",
-                        p.text.replace("\t", "\\t").replace("\n", "\\n"),
-                    ]) + "\n")
-                fm.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            for sel in sf.iter_selects():
-                n_sel += 1
-                info["selects"] += 1
-                fs.write(json.dumps({
-                    "script": name, "scene": sel.label, "index": sel.index,
-                    "text": sel.text, "text_idx": sel.text_idx,
-                }, ensure_ascii=False) + "\n")
-            index[name] = info
+            for p in msg.pages:
+                n_page += 1
+                info["pages"] += 1
+                if not p.length_ok:
+                    info["length_mismatch"] += 1
+                if p.plain is None:
+                    info["missing_plain"] += 1
+                rec["pages"].append({
+                    "page": p.index,
+                    "text": p.text,
+                    "text_idx": p.text_idx,
+                    "plain": p.plain,
+                    "plain_idx": p.plain_idx,
+                    "len": p.length,
+                    "alt_speaker": p.alt_name,
+                    "alt_speaker_idx": p.alt_name_idx,
+                    "voice": p.voice,
+                    "char_id": p.char_id,
+                })
+                rows.append(rec)
+        for sel in sf.iter_selects():
+            n_sel += 1
+            info["selects"] += 1
+            sels.append({
+                "script": name, "scene": sel.label, "index": sel.index,
+                "text": sel.text, "text_idx": sel.text_idx,
+            })
+        textset.write_script(args.out, name, rows, sels)
+        index[name] = info
 
     with open(idx_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump({"scripts": index,
                    "duplicate_copies": dupes,
+                   "domains": dict(collections.Counter(i["domain"] for i in index.values())),
                    "totals": {"scripts": len(index), "messages": n_msg,
                               "pages": n_page, "selects": n_sel}},
                   f, ensure_ascii=False, indent=1, sort_keys=True)
     print(f"scripts={len(index)} messages={n_msg} pages={n_page} selects={n_sel} "
           f"overridden={len(dupes)} -> {args.out}")
+    if wanted:
+        got = {i["domain"] for i in index.values()}
+        print(f"domains requested={sorted(wanted)} present={sorted(got)}")
+        if not got or wanted - got:
+            raise SystemExit(f"requested domain(s) produced no script: {sorted(wanted - got)}")
     if skipped:
         print(f"skipped {len(skipped)} payload(s) that are not parseable scripts:", file=sys.stderr)
         for line in skipped[:5]:

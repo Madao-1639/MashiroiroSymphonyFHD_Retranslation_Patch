@@ -4,7 +4,7 @@ Usage (from project root):
     mamba run -n GalRev python script/build_pairs.py --out resource/match
 
 Output:
-    pairs.jsonl     one record per aligned row (see doc/text-model.md §7)
+    pairs/<script>.jsonl  one record per aligned row (see doc/text-model.md §7)
     _stats.json     per-script workload + a suggested subagent split
 
 The pairing is purely structural: `(script, scene, row, page)`. Rows whose voice id is
@@ -18,18 +18,18 @@ import argparse
 import collections
 import json
 import os
+import sys
 import unicodedata
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tool import textset  # noqa: E402
 
-def load(path):
+
+def load(set_dir):
+    """text set dir -> {script: {scene: {row: record}}}（走一脚本一文件布局）"""
     per = collections.defaultdict(lambda: collections.defaultdict(dict))
-    with open(path, encoding="utf-8") as fp:
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            rec = json.loads(line)
-            per[rec["script"]][rec["scene"]][rec["row"]] = rec
+    for rec in textset.iter_records(set_dir, textset.MESSAGES):
+        per[rec["script"]][rec["scene"]][rec["row"]] = rec
     return per
 
 
@@ -60,64 +60,65 @@ def similarity(a: str, b: str) -> float:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--left", default="resource/chs_text")
-    ap.add_argument("--right", default="resource/steam_text")
+    ap.add_argument("--right", default="resource/steam_text_zhtw")
     ap.add_argument("--out", default="resource/match")
     args = ap.parse_args()
 
-    left = load(os.path.join(args.left, "messages.jsonl"))
-    right = load(os.path.join(args.right, "messages.jsonl"))
+    left = load(args.left)
+    right = load(args.right)
     common = sorted(set(left) & set(right))
     os.makedirs(args.out, exist_ok=True)
 
     stats = {}
     totals = collections.Counter()
-    with open(os.path.join(args.out, "pairs.jsonl"), "w", encoding="utf-8", newline="\n") as fp:
-        for script in common:
-            rows = eq = review = 0
-            for scene in sorted(left[script]):
-                a_scene = left[script][scene]
-                b_scene = right[script].get(scene, {})
-                for row in sorted(a_scene):
-                    a = a_scene[row]
-                    b = b_scene.get(row)
-                    rows += 1
-                    if b is None:
-                        # should not happen: structure was verified identical
-                        fp.write(json.dumps({
-                            "script": script, "scene": scene, "row": row, "page": 0,
-                            "status": "missing_on_steam"}, ensure_ascii=False) + "\n")
+    for script in common:
+        out_rows = []
+        rows = eq = review = 0
+        for scene in sorted(left[script]):
+            a_scene = left[script][scene]
+            b_scene = right[script].get(scene, {})
+            for row in sorted(a_scene):
+                a = a_scene[row]
+                b = b_scene.get(row)
+                rows += 1
+                if b is None:
+                    # should not happen: structure was verified identical
+                    out_rows.append({
+                        "script": script, "scene": scene, "row": row, "page": 0,
+                        "status": "missing_on_steam"})
+                    review += 1
+                    continue
+                for page, (pa, pb) in enumerate(zip(a["pages"], b["pages"])):
+                    voice_a, voice_b = pa["voice"], pb["voice"]
+                    voice_eq = bool(voice_a) and voice_a == voice_b
+                    kana = has_kana(pa["text"])
+                    if kana:
+                        status = "source_untranslated"
+                    elif voice_eq:
+                        status = "aligned"
+                    else:
+                        status = "needs_review"
+                    rec = {
+                        "script": script,
+                        "scene": scene,
+                        "row": row,
+                        "page": page,
+                        "status": status,
+                        "speaker": {"chs": a["speaker"], "steam": b["speaker"]},
+                        "alt_speaker": {"chs": pa["alt_speaker"], "steam": pb["alt_speaker"]},
+                        "voice": {"chs": voice_a, "steam": voice_b, "equal": voice_eq},
+                        "text": {"chs": pa["text"], "steam": pb["text"]},
+                        "length": {"chs": pa["len"], "steam": pb["len"]},
+                        "similarity": round(similarity(pa["text"], pb["text"]), 3),
+                    }
+                    out_rows.append(rec)
+                    totals[status] += 1
+                    if status == "aligned":
+                        eq += 1
+                    else:
                         review += 1
-                        continue
-                    for page, (pa, pb) in enumerate(zip(a["pages"], b["pages"])):
-                        voice_a, voice_b = pa["voice"], pb["voice"]
-                        voice_eq = bool(voice_a) and voice_a == voice_b
-                        kana = has_kana(pa["text"])
-                        if kana:
-                            status = "source_untranslated"
-                        elif voice_eq:
-                            status = "aligned"
-                        else:
-                            status = "needs_review"
-                        rec = {
-                            "script": script,
-                            "scene": scene,
-                            "row": row,
-                            "page": page,
-                            "status": status,
-                            "speaker": {"chs": a["speaker"], "steam": b["speaker"]},
-                            "alt_speaker": {"chs": pa["alt_speaker"], "steam": pb["alt_speaker"]},
-                            "voice": {"chs": voice_a, "steam": voice_b, "equal": voice_eq},
-                            "text": {"chs": pa["text"], "steam": pb["text"]},
-                            "length": {"chs": pa["len"], "steam": pb["len"]},
-                            "similarity": round(similarity(pa["text"], pb["text"]), 3),
-                        }
-                        fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                        totals[status] += 1
-                        if status == "aligned":
-                            eq += 1
-                        else:
-                            review += 1
-            stats[script] = {"rows": rows, "voice_aligned": eq, "needs_review": review}
+        textset.write_pairs(args.out, script, out_rows)
+        stats[script] = {"rows": rows, "voice_aligned": eq, "needs_review": review}
 
     # suggested work split: ~10 scripts per LLM batch, balanced by review workload
     order = sorted(stats.items(), key=lambda kv: -kv[1]["needs_review"])

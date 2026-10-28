@@ -199,6 +199,9 @@ class PsbFile:
             if len(body) != self.mdf_length:
                 raise PsbError(f"mdf length mismatch: {len(body)} != {self.mdf_length}")
         self.body = body
+        self.int_slots: list[tuple[str, int, int, int]] = []
+        self.str_slots: list[tuple[str, int, int, int]] = []
+        self._record_ints = False
         self._parse()
 
     # ---------------------------------------------------------------- parse
@@ -241,6 +244,61 @@ class PsbFile:
         br.seek(self.offset_entries)
         self.root = self._unpack(br)
 
+    def _note_int(self, path, pos, width, value):
+        if self._record_ints:
+            self.int_slots.append((path, pos, width, value))
+
+    def _note_str(self, path, pos, width, index):
+        if self._record_ints:
+            self.str_slots.append((path, pos, width, index))
+
+    def record_slots(self, prefix: str = "$"):
+        """One traversal -> (int_slots, str_slots), both filtered by `prefix`.
+
+        Use this instead of calling `find_ints` and `find_str_refs` one after the other:
+        each of those re-walks the whole object graph (with a path string per node), which
+        dominates the cost of a write-back run.
+        """
+        self.int_slots = []
+        self.str_slots = []
+        self._record_ints = True
+        br = io.BytesIO(self.body)
+        br.seek(self.offset_entries)
+        try:
+            self._unpack(br, "$")
+        finally:
+            self._record_ints = False
+        ints = [s for s in self.int_slots if s[0].startswith(prefix)]
+        strs = [s for s in self.str_slots if s[0].startswith(prefix)]
+        return ints, strs
+
+    def find_ints(self, prefix: str = "$") -> list[tuple[str, int, int, int]]:
+        """[(path, byte_pos, byte_width, value)] for every integer in the graph.
+
+        The positions are absolute offsets inside `body`; the type byte sits at `byte_pos`
+        and the little-endian value follows it (`byte_width` bytes, 0 for the value 0 type).
+        """
+        self.int_slots = []
+        self.str_slots = []
+        self._record_ints = True
+        br = io.BytesIO(self.body)
+        br.seek(self.offset_entries)
+        try:
+            self._unpack(br, "$")
+        finally:
+            self._record_ints = False
+        return [slot for slot in self.int_slots if slot[0].startswith(prefix)]
+
+    def find_str_refs(self, prefix: str = "$") -> list[tuple[str, int, int, int]]:
+        """[(path, byte_pos, byte_width, string_index)] for every string *reference*.
+
+        Same shape as `find_ints`; lets a caller re-point one reference at another slot
+        provided the new index fits the existing inline width.
+        """
+        if not self._record_ints:
+            self.find_ints(prefix)
+        return [slot for slot in self.str_slots if slot[0].startswith(prefix)]
+
     def _decode_name(self, root_idx: int) -> str:
         out = []
         node = self.names_data[root_idx]
@@ -271,7 +329,7 @@ class PsbFile:
     def string_value(self, index: int) -> str:
         return self.get_string(index).value
 
-    def _unpack(self, br: io.BytesIO):
+    def _unpack(self, br: io.BytesIO, path: str = "$"):
         pos = br.tell()
         t = br.read(1)
         if not t:
@@ -284,14 +342,21 @@ class PsbFile:
         if t == TRUE:
             return True
         if t == NUMBER_N0:
+            self._note_int(path, pos, 0, 0)
             return 0
         if NUMBER_N1 <= t <= NUMBER_N8:
-            return _read_le(br, t - NUMBER_N0)
+            width = t - NUMBER_N0
+            value = _read_le(br, width)
+            self._note_int(path, pos, width, value)
+            return value
         if ARRAY_N1 <= t <= ARRAY_N8:
             br.seek(pos)
             return _read_array(br)
         if STRING_N1 <= t <= STRING_N4:
-            return self.get_string(_read_le(br, t - STRING_N1 + 1))
+            width = t - STRING_N1 + 1
+            index = _read_le(br, width)
+            self._note_str(path, pos, width, index)
+            return self.get_string(index)
         if RESOURCE_N1 <= t <= RESOURCE_N4:
             idx = _read_le(br, t - RESOURCE_N1 + 1)
             res = self.resources.get(idx)
@@ -308,9 +373,9 @@ class PsbFile:
             offsets = _read_array(br)
             base = br.tell()
             out = []
-            for off in offsets:
+            for i, off in enumerate(offsets):
                 br.seek(base + off)
-                out.append(self._unpack(br))
+                out.append(self._unpack(br, f"{path}[{i}]"))
             br.seek(base)
             return out
         if t == OBJECTS:
@@ -320,7 +385,8 @@ class PsbFile:
             out = {}
             for i, nref in enumerate(name_refs):
                 br.seek(base + offsets[i])
-                out[self.names[nref]] = self._unpack(br)
+                key = self.names[nref]
+                out[key] = self._unpack(br, f"{path}.{key}")
             br.seek(base)
             return out
         if EXTRA_CHUNK_N1 <= t <= EXTRA_CHUNK_N4:
@@ -333,18 +399,29 @@ class PsbFile:
         raise PsbError(f"unknown object type 0x{t:02x} at 0x{pos:x}")
 
     # ---------------------------------------------------------------- write
-    def rebuild(self, new_strings: dict[int, str] | None = None) -> bytes:
-        """Re-emit the file, replacing the value of the given string slots.
+    def rebuild(self, new_strings: dict[int, str] | None = None,
+                extra_strings: list[str] | None = None, body: bytes | None = None) -> bytes:
+        """Re-emit the file, replacing the given slots and optionally appending new ones.
 
         Everything except the string pool is copied verbatim, so the object graph,
-        name trie and resource chunks stay byte-identical.
+        name trie and resource chunks stay byte-identical. Appended slots take the indexes
+        `len(string_offsets) + k`; a caller that wants to use them must re-point the
+        referencing inline index in place (same byte width) before calling rebuild.
         """
         new_strings = new_strings or {}
+        extra_strings = extra_strings or []
+        # `body` lets a caller hand over a copy whose graph was already patched in place
+        # (e.g. re-pointed string references); the layout is unchanged, only values differ.
+        src = self.body if body is None else body
         count = len(self.string_offsets)
         data = bytearray()
         offsets = []
-        for i in range(count):
+        for i in range(count + len(extra_strings)):
             offsets.append(len(data))
+            if i >= count:
+                raw = extra_strings[i - count].encode("utf-8")
+                data += raw + b"\x00"
+                continue
             value = new_strings.get(i)
             if value is None:
                 start = self.offset_strings_data + self.string_offsets[i]
@@ -355,18 +432,23 @@ class PsbFile:
             data += raw + b"\x00"
 
         offsets_blob = _pack_array_styled(offsets, self._str_count_width, self._str_entry_width)
-        header = bytearray(self.body[:self.header_length])
-        names_region = self.body[self.header_length:self.offset_strings]
-        tail = self.body[self.offset_chunk_offsets:]
+        header = bytearray(src[:self.header_length])
+        names_region = src[self.header_length:self.offset_strings]
+        tail = src[self.offset_chunk_offsets:]
 
         new_offsets_strings_data = self.offset_strings + len(offsets_blob)
         shift = (len(offsets_blob) - (self.offset_strings_data - self.offset_strings)) + \
                 (len(data) - (self.offset_chunk_offsets - self.offset_strings_data))
 
+        # `offset_entries` points *inside* the names region (before the string tables), so it
+        # must NOT be shifted -- shifting it silently corrupted every grown file while the
+        # zero-change round-trip (shift == 0) still looked perfect.
+        if self.offset_entries >= self.offset_strings:
+            raise PsbError("unexpected layout: object graph is not inside the names region")
         vals = [self.header_length, self.offset_names, self.offset_strings,
                 new_offsets_strings_data,
                 self.offset_chunk_offsets + shift, self.offset_chunk_lengths + shift,
-                self.offset_chunk_data + shift, self.offset_entries + shift]
+                self.offset_chunk_data + shift, self.offset_entries]
         struct.pack_into("<8I", header, 8, *vals)
         checksum = zlib.adler32(bytes(header[8:8 + 32])) & 0xFFFFFFFF
         struct.pack_into("<I", header, 0x28, checksum)
@@ -375,6 +457,36 @@ class PsbFile:
         if self.is_mdf:
             return MDF_SIG + struct.pack("<I", len(body)) + zlib.compress(body, 9)
         return body
+
+    def patch_ints(self, edits) -> bytes:
+        """Rewrite inline integer / string-index slots in place (same byte width).
+
+        `edits` = iterable of (byte_pos, byte_width, new_value) for an integer slot, or
+        (byte_pos, byte_width, new_value, "str") for a string-reference slot. Raises when the
+        new value does not fit the existing width -- growing it would move every following
+        offset and would need a full object-graph serialiser.
+        """
+        body = bytearray(self.body)
+        for edit in edits:
+            pos, width, value = edit[0], edit[1], edit[2]
+            kind = edit[3] if len(edit) > 3 else "int"
+            if kind == "str":
+                if width == 0:
+                    raise PsbError(f"string slot at 0x{pos:x} has no inline width")
+                if not 0 <= value < (1 << (8 * width)):
+                    raise PsbError(f"string index {value} does not fit {width} byte(s) "
+                                   f"at 0x{pos:x}")
+                body[pos] = STRING_N1 + width - 1
+            else:
+                if width == 0:
+                    if value != 0:
+                        raise PsbError(f"slot at 0x{pos:x} is the constant 0, cannot store {value}")
+                    continue
+                if not 0 <= value < (1 << (8 * width)):
+                    raise PsbError(f"value {value} does not fit {width} byte(s) at 0x{pos:x}")
+                body[pos] = NUMBER_N0 + width
+            body[pos + 1:pos + 1 + width] = value.to_bytes(width, "little")
+        return bytes(body)
 
     # ---------------------------------------------------------------- helpers
     def iter_strings(self, node=_ROOT, path: str = "$"):

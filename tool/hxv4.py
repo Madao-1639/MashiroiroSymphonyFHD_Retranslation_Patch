@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import json
+import mmap
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -509,12 +510,31 @@ class Hxv4Archive:
     def __init__(self, path: str, profile: Hxv4Profile):
         self.path = path
         self.profile = profile
-        with open(path, "rb") as fp:
-            self.data = fp.read()
+        # 用 mmap：启动档案 1.7~1.9 GB，整份读进内存要几十秒且占 GB 级 RAM；
+        # mmap 只在真正访问某条 entry 时触发分页，语义与 bytes 一致（都支持切片/unpack_from）。
+        self._fp = open(path, "rb")
+        try:
+            self.data = mmap.mmap(self._fp.fileno(), 0, access=mmap.ACCESS_READ)
+        except (ValueError, OSError):  # 空文件/不支持 mmap 的载体
+            self.data = self._fp.read()
         self.entries: list[Entry] = []
         self.open_flag = 0
         self.records: list[Record] = []
         self._parse()
+
+    def close(self):
+        if isinstance(self.data, mmap.mmap):
+            self.data.close()
+            self.data = b""
+        if getattr(self, "_fp", None):
+            self._fp.close()
+            self._fp = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # -- container
     def _parse(self):

@@ -1,0 +1,432 @@
+
+// 旧バージョン用
+function convLangText(ret,data)
+{
+	if (data !== void) {
+		ret.disp       = data[0] if data[0] != "";
+		ret.text       = data[1] if data[1] != "";
+		ret.textlength = ((string)ret.text).length; // XXX
+		ret.speechtext = data[2] !== void ? data[2] : ret.text;
+		ret.searchtext = data[3] !== void ? data[3] : ret.text;
+	}
+}
+
+// 新バージョン用
+function convLangText2(ret,data)
+{
+	if (data !== void) {
+		ret.disp       = data[0] if data[0] != "";
+		ret.text       = data[1] if data[1] != "";
+		ret.textlength = data[2] !== void ? data[2] : ((string)ret.text).length;
+		ret.speechtext = data[3] !== void ? data[3] : ret.text;
+		ret.searchtext = data[4] !== void ? data[4] : ret.text;
+	}
+}
+
+function convertSceneText(array, version)
+{
+	if (array !== void) {
+		if (version === void) {
+			// 旧バージョン
+			var ret = %[];
+			ret.name  = array[0];
+			ret.disp  = array[1];
+			if (typeof array[2] == "Object") {
+				var l = array[2];
+				convLangText(ret, l[0]);
+				var language = [];
+				for (var i=0;i<l.count;i++) {
+					var ret = %[];
+					convLangText(ret, l[i]);
+					language.add(ret);
+				}
+				ret.language = language;
+			} else {
+				ret.text  = array[2];
+				ret.speechtext = array[7] !== void ? array[7] : ret.text;
+				ret.searchtext = array[8] !== void ? array[8] : ret.text;
+			}
+			var voice = array[3];
+			if (typeof voice == "String") {
+				ret.voice = [%[name:ret.name, voice:voice]];
+			} else {
+				ret.voice = voice;
+			}
+			ret.flag  = array[4];
+			ret.state = Scripts.clone(array[5]);
+			ret.nowaitTime = array[6];
+			return ret;
+		} else {
+			// 新バージョン
+			var ret = %[];
+			ret.name  = array[0];
+			var l = array[1];
+			convLangText2(ret, l[0]);
+			if (l.count > 1) {
+				var language = [];
+				for (var i=0;i<l.count;i++) {
+					var ret = %[];
+					convLangText2(ret, l[i]);
+					language.add(ret);
+				}
+				ret.language = language;
+			}
+			var voice = array[2];
+			if (typeof voice == "String") {
+				ret.voice = [%[name:ret.name, voice:voice]];
+			} else {
+				ret.voice = voice;
+			}
+			ret.flag  = array[3];
+			ret.state = Scripts.clone(array[4]);
+			ret.nowaitTime = array[5];
+			return ret;
+		}
+	}
+}
+
+/**
+ * シナリオデータ参照用クラス
+ */
+class StorageData {
+
+	var version;
+	var storage;
+	var data;
+	var sceneMap; // data.root.scenes !== void の場合に label をキーに sceneを参照する辞書が入る (data.root.scens===voidならvoid)
+
+	function getScenes() {
+		var ret = [];
+		if (data !== void) {
+			var scenes = data.root.scenes;
+			if (scenes !== void) {
+				var count = scenes.count;
+				for (var i=0;i<count;i++) {
+					var scene = scenes[i];
+					var textCount = scene.selects !== void ? 1 : (scene.texts !== void ? scene.texts.count : 0);
+					var selects   = scene.selects !== void ? Scripts.clone(scene.selects) : void;
+					ret.add(%[storage:storage, target:scene.label, title:scene.title, selects:selects, textCount:textCount]);
+				}
+			}
+		}
+		return ret;
+	}
+	
+	function StorageData(storage, path="") {
+		this.storage = storage;
+		path += storage + ".scn";
+		if (Storages.isExistentStorage(path)) {
+			Plugins.link("psbfile.dll")  if (typeof global.PSBFile != "Object");
+			data = new PSBFile(path);
+			var scenes = data.root.scenes;
+			if (scenes !== void) {
+				sceneMap = %[];
+				var count = scenes.count;
+				for (var i=0;i<count;i++) {
+					var scene = scenes[i];
+					if (scene.label != "") {
+						sceneMap[scene.label] = scene;
+					}
+					if (scene.jumplabels !== void) {
+						// ジャンプラベルの情報も反映させる
+						Scripts.foreach(scene.jumplabels, function(name,value,sceneMap,scene) {
+							sceneMap[name] = scene;
+						}, sceneMap, scene);
+					}
+				}
+			}
+		}
+	}
+
+	function finalize() {
+		if (data) {
+			invalidate data;
+		}
+	}
+
+	property hash {
+		getter() {
+			return data !== void && data.root.hash !== void ? data.root.hash : void;
+		}
+	}
+
+	function findScene(label) {
+		if (sceneMap) {
+			return (label != "") ? sceneMap[label] : data.root.scenes[0];
+		}
+	}
+
+	function findSceneLine(line) {
+		if (sceneMap) {
+			var scenes = data.root.scenes;
+			var count = scenes.count;
+			for (var i=0;i<count-1;i++) {
+				var scene = scenes[i];
+				var nscene = scenes[i+1];
+				if (line < nscene.firstLine) {
+					return scene;
+				}
+			}
+			if (count > 0) {
+				return scenes[count-1];
+			}
+		}
+	}
+
+	/**
+	 * テキスト情報を取得
+	 * @param label ラベル
+	 * @param idx インデックス
+	 * @param title タイトル情報をあわせて埋めて返す
+	 */
+	function getText(label, idx, title=false) {
+		var scene = findScene(label);
+		if (scene) {
+			var texts = scene.texts;
+			if (texts !== void) {
+				var ret = convertSceneText(texts[idx-1], scene.version);
+				if (ret !== void && title) {
+					ret.title = Scripts.clone(scene.title);
+				}
+				return ret;
+			}
+		}
+	}
+
+	// シーン冒頭のステート
+	function getState(label) {
+		var scene = findScene(label);
+		if (scene) {
+			return Scripts.clone(scene.lines[0][1]);
+		}
+	}
+	
+	function getInfo(label) {
+		var scene = findScene(label);
+		if (scene) with (scene) {
+			var ret = %[title:.title];
+			ret.select = .selects !== void; // 選択肢かどうか
+			if (.texts !== void) { // 1行目テキストの情報
+				ret.text = convertSceneText(.texts[0], .version);
+			}
+			return ret;
+		}
+	}
+
+	// （情報があれば）言語別の元テキスト行数を取得
+	function getLangLine(label, textid, lang) {
+		var llmap = data.root.llmap;
+		//dm("getLangLine", label, textid, lang, llmap ? llmap[+lang] : void);
+		if (llmap && llmap[+lang]) {
+			var map = llmap[+lang];
+			if (label == "") {
+				var scn = findScene();
+				if (scn) label = scn.label;
+			}
+			if (label != "" && map[label]) {
+				return %[ file:map.name, line:map[label][+textid] ];
+			}
+		}
+	}
+
+	/**
+	 * 指定したテキストを含むシーンを検索する
+	 * @param key 検索テキスト(""なら対象全て)
+	 * @param store 格納先
+	 * @param lang 検索対象言語インデックス
+	 */
+	function searchText(key, store, lang) {
+		if (sceneMap) {
+			// 旧型式
+			function searchText(text, key, lang) { 
+				if (text !== void) {
+					var t;
+					if (lang !== void && typeof text[2] == "Object") {
+						var ref = text[2][+lang];
+						/**/t = ref [3/*==searchText*/] !== void ? ref [3] : ref [1/*==text*/]; // [XXX] cf. convLangText()
+					} else  t = text[8/*==searchText*/] !== void ? text[8] : text[2/*==currentText.text*/]; // [XXX] cf. convertSceneText()
+					if (typeof key != "Object") return (typeof t == "String" && t.indexOf(key) >= 0); // key is string
+					var m = key.match((string)t); // key is regexp
+					return m && m.count > 0;
+				}
+			}
+			// 新形式
+			function searchText2(text, key, lang) {
+				if (text !== void) {
+					var ref = (typeof text[1] == "Object") ? text[1][+lang] : void;
+					if(!ref) return;
+					var t = ref[4/*==searchText*/];
+					if (t === void) t = ref [1/*==text*/]; // [XXX] cf. convLangText2()
+					if (typeof key != "Object") return (typeof t == "String" && t.indexOf(key) >= 0); // key is string
+					var m = key.match((string)t); // key is regexp
+					return m && m.count > 0;
+				}
+			}
+			// 全マッチ
+			function matchAll(text) { return text !== void; }
+			Scripts.foreach(data.root.scenes, function(id, scene, *) {
+				//dm(@"search:");
+				Scripts.foreach(scene.texts, function(id, text, scene, key, store, /*matchAll or null*/force, lang, /*sceneText*/oldver, /*sceneText2*/newver) {
+					var filter = force ? force : scene.version ? newver : oldver;
+					store.add(%[scene:@"${storage}${scene.label}", idx:id+1, flag:text[4/*==flag*/]]) if (filter(text, key, lang));
+				}, scene, *) if (scene.texts !== void);
+			}, key, store, (typeof key == "Object" || key != "") ? null : matchAll, lang, searchText, searchText2);
+		}
+	}
+
+	/**
+	 * 全テキスト（選択肢／空テキストラベル含む）の情報を列挙する
+	 */
+	function enumAllText() {
+		if (sceneMap) {
+			var store = [];
+			Scripts.foreach(data.root.scenes, function(id, scene, store) {
+				var title = Scripts.clone(scene.title);
+				var scntag = @"${storage}${scene.label}";
+				if (scene.selects && scene.selects.count) {
+					store.add(%[ title:title, scene:scntag, selects:Scripts.clone(scene.selects), selectInfo:Scripts.clone(scene.selectInfo) ]);
+				} else if (scene.texts !== void) {
+					Scripts.foreach(scene.texts, function(id, text, store, scntag, title, ver) {
+						var conv = Scripts.clone(convertSceneText(text, ver));
+						conv.title = title;
+						conv.scene = scntag;
+						conv.idx   = id+1;
+						store.add(conv);
+					}, store, scntag, title, scene.version);
+				} else {
+					store.add(%[ title:title, scene:scntag, empty:true ]);
+				}
+			}, store);
+			return store;
+		}
+	}
+
+	/**
+	 * 全SFlagを列挙する(※[sflag]タグもしくはCG/BGM等の自動フラグ処理のみで，evalタグやexpオプションのフラグ処理は対象外）
+	 */
+	function enumAllSFlags(total = %[], detail = %[]) {
+		if (sceneMap) {
+			Scripts.foreach(data.root.scenes, function(id, scene, total, detail) {
+				if (scene.lines !== void) {
+					Scripts.foreach(scene.lines, function(id, line, total, detail, storage, label) {
+						if (typeof line == "String" && line != "") {
+							total[line]++;
+							if (detail) {
+								if (detail[storage] === void)
+									detail[storage] = [];
+								/**/detail[storage].add(line);
+								if (detail[storage+label] === void)
+									detail[storage+label] = [];
+								/**/detail[storage+label].add(line);
+							}
+						}
+					}, total, detail, storage, scene.label);
+				}
+			}, total, detail);
+			return total;
+		}
+	}
+	/**
+	 * 情報一覧を取得する
+	 * @return 成功した場合は配列，失敗した場合はvoid
+	 *         %[
+	 *            sflags:%[ "flag1"=>true, ... ], // 全体のsflag情報
+	 *            readed:%[ key=>num, ... ], // 全体の既読MAX情報（key:"ストレージ名*ラベル名"）
+	 *            labels: [ "*label1", "*label2", ...],  // ラベル名一覧
+	 *            "*"      =>%[ type, name, readed, sflags, { next, exit, selects, preevals, postevals } ], // ラベルなし（シーン冒頭）シーン情報
+	 *            "*label1"=>%[ 〃 ], // 指定ラベルのシーン情報
+	 *            "*label2"=>%[ 〃 ],
+	 *              ... ]
+	 */
+	function getSummary(detail) {
+		if (data && data.root.scenes) {
+			var r = %[ sflags:%[], readed:%[], labels:[] ];
+			Scripts.foreach(data.root.scenes, function(id, scene, r, detail) {
+				if (!scene) return;
+				var label = scene.label;
+				var infokey = (label != "" ? label : "*");
+				r.labels.add(infokey);
+				var info = r[infokey] = %[ sflags:%[] ];
+
+				var lines = scene ? scene.lines : void;
+				if (lines === void) return;
+
+				var readed = 0, sflags = r.sflags;
+				for (var i = 0, cnt = lines.count; i < cnt; i++) {
+					var obj = lines[i];
+					switch (typeof obj) {
+					case "Integer":
+						if (obj > readed) readed = obj;
+						break;
+					case "String":
+						if (obj != "") {
+							sflags[obj] = true;
+							info.sflags[obj] = true;
+						}
+						break;
+					}
+				}
+				info.readed = readed;
+				var sceneName = ((string)this.storage).toLowerCase() + label;
+				if (sceneName != "") r.readed[sceneName] = readed;
+
+				info.name = sceneName;
+				var type, hassel = scene.selects && scene.selects.count > 0;
+				if (!hassel) type = (readed > 0) ? "normal" : "notext";
+				else type = (scene.selectInfo.type == 2) ? "mselect" : "select";
+				info.type = type;
+
+				if (!detail) return;
+
+				if (hassel) {
+					var sels = scene.selects;
+					var add = (info.selects = []).add;
+					for (var i = 0, cnt = sels.count; i < cnt; i++) {
+						add(Scripts.clone(sels[i])); // [TODO]
+					}
+				}
+				var evals;
+				if(scene.preevals) {
+					info.preevals = evals = Scripts.clone(scene.preevals);
+					if (r.evals === void) r.evals = [];
+					/**/r.evals.push(evals*);
+				}
+				if(scene.postevals) {
+					info.postevals = evals = Scripts.clone(scene.postevals);
+					if (r.evals === void) r.evals = [];
+					/**/r.evals.push(evals*);
+				}
+				var next, exit;
+				if (scene.nexts) {
+					var cnt = scene.nexts.count;
+					if (cnt > 0) {
+						next = [];
+						exit = [];
+						for (var i = 0; i < cnt; i++) {
+							var item = scene.nexts[i];
+							if (!item) continue;
+							var nt = item.type;
+							var sw = (nt == 1 || nt == 3) ? exit : next; // [XXX]
+							if (detail > 0) {
+								var go = (string)item.storage + (string)item.target;
+								if (go != "") sw.add(go);
+							} else {
+								sw.add(Scripts.clone(item));
+							}
+						}
+						if (detail > 0) {
+							if (next.count <= 1) next = next[0];
+							if (exit.count <= 1) exit = exit[0];
+						} else {
+							next = void if (!next.count);
+							exit = void if (!exit.count);
+						}
+					}
+				}
+				info.next = next if (next !== void);
+				info.exit = exit if (exit !== void);
+			} incontextof this, r, detail);
+			return r;
+		}
+	}
+}

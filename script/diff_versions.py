@@ -2,9 +2,11 @@
 
 Usage (from project root):
     mamba run -n GalRev python script/diff_versions.py \
-        --left resource/chs_text --right resource/steam_text \
-        --out doc/version-diff-report.md
+        --left resource/chs_text --right resource/steam_text_zhtw \
+        --out tmp/diff_report.md
 
+生成的是一份**机械明细**（脚本清单、逐脚本行数表），属于临时产物：
+结论写进 doc/version-diff.md，明细按需重跑本脚本即可，不入库、不放进 doc/。
 The report answers: which scripts exist on each side, which scenes (labels) line up,
 how many messages each scene has on each side, and where the counts diverge.
 """
@@ -17,6 +19,9 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tool import textset  # noqa: E402
+
 
 def load_index(path):
     with open(os.path.join(path, "_index.json"), encoding="utf-8") as fp:
@@ -26,12 +31,7 @@ def load_index(path):
 def load_messages(path):
     """script -> {scene: [message records]}"""
     per_script = collections.defaultdict(lambda: collections.defaultdict(list))
-    with open(os.path.join(path, "messages.jsonl"), encoding="utf-8") as fp:
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            rec = json.loads(line)
+    for rec in textset.iter_records(path, textset.MESSAGES):
             per_script[rec["script"]][rec["scene"]].append(rec)
     return per_script
 

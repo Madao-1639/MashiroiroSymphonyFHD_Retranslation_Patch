@@ -1,0 +1,217 @@
+﻿// ゲームタイトル依存の特殊処理等
+
+//--------------------------------------------------------------
+// モジュール
+
+with (SystemConfig)
+{
+	// 一括ロード処理
+	(function /*LoadModule*/(load, files) {
+		var ext = Storages.extractStorageExt;
+		var log = Debug.message;
+		for (var i = 0, cnt = files.count; i < cnt; i++) {
+			var file = files[i];
+			switch (typeof file) {
+			case "void": continue;
+			case "String":
+				if (file == "") continue;
+				if (ext(file) == ".tjs") {
+//					log(file);
+					load(file);
+					continue;
+				}
+				break;
+			case "Object":
+				// SystemConfig初期値を埋め込みたい場合に使用
+				if (file instanceof "Function") file(SystemConfig, load);
+				else if (file instanceof "Dictionary" || file instanceof "Array") {
+					(Dictionary.assign incontextof SystemConfig)(file, false);
+				}
+				continue;
+			}
+			log("custom:LoadModule", i, file); // unknown data, file
+		}
+	})(
+		KAGLoadScriptOnce,// ロード処理
+	[
+		// SystemConfigに値を書くサンプル
+	@if (0)
+		// すべてのロードより前（引数渡し時に評価）
+		(.HogeHoge = 123,
+		 .FugaFuga = "456",
+		 void), // 最終的な評価値をvoidにすること
+		// オンデマンド設定（配列）
+		[
+			"HogeHoge" => 123,
+			"FugaFuga" => "456",
+			],
+		// オンデマンド設定（辞書）
+		%[
+			HogeHoge: 123,
+			FugaFuga: "456",
+			],
+		// オンデマンド設定（関数）
+		function (sc, load) { with (sc) {
+			.Hoge.Fuga = void; // デフォルトで設定される辞書などを後から書き換えたいケースなどに利用
+			.TextParam = FilterDrawTextParam("hoge.fuga"); // 以前にロードしたモジュールの関数を利用
+		} },
+	@endif
+
+		//==============================
+
+		// ■特殊用途
+//		"d3d.tjs",					// D3D用オブジェクト生成
+//		"bishamon.tjs",				// BISHAMON用モジュールの読み込み ※d3dmode でないと動作しません
+		"emotion.tjs",				// エモーション機能有効化
+		"speech.tjs",				// テキスト読み上げ
+		"autoface.tjs",				// 顔窓自動処理制御
+		"voicematch.tjs",			// ボイスマッチング処理
+		"diffimage2.tjs",			// 機械差分画像ロード機能
+//		"name.tjs",					// 名前入力ベース／dispNameFilterの【】表示実装例
+
+		// ■基礎ライブラリ
+		"scrollutil.tjs",			// スクロール処理ベース
+		"dragutil.tjs",				// ドラッグ処理ベース
+		"drawtextparam.tjs",		// システム文字表示の修飾パラメータの一カ所集約
+
+		// ■操作系
+//		"gesture.tjs",				// マウスジェスチャ機能／★OptionModule
+//		"keybinder.tjs",			// キーボードバインド変更／★OptionModule
+//		"exgamepad.tjs",			// ゲームパッド入力拡張／カスタマイズ（※要gamepad.dll）
+//		"mscurautohide.tjs",		// マウスカーソル自動消去／★OptionModule
+//		"touchui.tjs",				// タッチ系操作ベース
+
+		// ■UI系全般
+		"nocfchkdialog.tjs",		// 次からは表示しないチェックつきダイアログ／★OptionModule
+//		"quickmenu.tjs",			// ゲーム画面常駐機能ボタン
+		"backlog.tjs",				// ブロックベースのバックログ表示
+		"helptextman.tjs",			// ヘルプ表示機能処理ベース／★OptionModule／▼FileStoreModule／◆ExGalleryModule
+//		"facethumbdraw.tjs",		// 汎用顔窓描画処理ベース（※要backlog.tjs）
+
+		// ■メッセージ表示拡張
+	///	"rendermsgwin.tjs",			// レンダー方式メッセージ窓機能の有効化
+		@set (MSGHACK_AUTOCOLOR=2)
+		"msghack.tjs",				// フチ影同時表示やグラデ表示・テキストフェード表示拡張
+//		"fonteffect.tjs",			// フォント修飾表示のConfig化（※要msghack）／★OptionModule
+//		"autoskipmark.tjs",			// オート・スキップ時のアイコン表示機能／★OptionModule
+//		"textspeedex.tjs",			// 既読テキスト速度／オートモードテキスト速度変更／★OptionModule
+//		"iconfader.tjs",			// メッセージ窓sysボタン自動消去
+//		"nameframe.tjs",			// 名前欄のラベルの連動表示処理 (※要msghack)
+
+		// ■通知系
+		"qlpopup.tjs",				// セーブデータのポップアップ表示処理／サムネデータ汎用描画（※要drawtextparam）
+		"bgmtitleindicator.tjs",	// BGMタイトル通知ポップアップ／★OptionModule
+//		"showdate.tjs",				// ゲーム中の日付表示
+
+		// ■セーブデータ系
+//		"gamecont.tjs",				// サスペンドセーブ／前回の続き復帰
+//		"rotatesave.tjs",			// QSave/AutoSaveの順繰りセーブ機能
+
+		// ■音声系
+		"sysvoice.tjs",				// 汎用システムボイス再生
+//		"voicemode.tjs",			// お気に入りボイス登録機能／▼FileStoreModule
+//		"voiceprogress.tjs",		// ボイス再生プログレスバー
+//		"voiceeffect.tjs",			// ボイス加工スクリプト拡張（※要wf*.dllプラグイン）
+//		"voiceboost.tjs",			// ボイス速度(kag.voicespeed)の一時変更（※Unmainted）
+//		"vcutfade.tjs",				// ボイスカット時にフェードアウトを行う／★OptionModule
+
+		// ■sysargモジュール
+//		"sqscr.tjs",				// 4:3画面モード／★OptionModule
+//		"stayontop.tjs",			// 常に手前表示／★OptionModule
+//		"stopdeactive.tjs",			// 非アクティブ動作停止／★OptionModule
+//		"designmscur.tjs",			// デザインマウスカーソル変更／★OptionModule
+
+		// ■コンフィグUI拡張
+//		"optrevundo.tjs",			// 設定変更アンドゥ実装（※★OptionModuleの専用対応必須）
+//		"hsvcpick.tjs",				// カラーサークルによる色選択UI
+
+		// ■ムービー・エンドロール系
+		"exroll.tjs",				// エンドロール拡張
+//		"movieqsel.tjs",			// ムービークォリティ選択
+
+		// ■エクストラ系
+		"cgview.tjs",				// CG鑑賞中の操作UI拡張
+		"exgallery.tjs",			// エクストラ画面全般の拡張・モジュール化
+		"exchview.tjs",				// 立ち絵鑑賞画面
+
+/**		// ■多言語対応
+		"advancedmenu.tjs",			// メニューバー内容の整理（高度な設定に分離）
+		"syslangtext.tjs",			// 多言語対応切り替えデータベース
+		"multilang.tjs",			// 多言語対応hack集（※要rendermsgwin）
+ */
+
+		// ■sysscn加入候補（要検討）
+//		"emoteD3D.tjs",				// E-mote汎用初期化（※順序注意 speech > multi|advmenu > emodeD3D）
+//		"quickpanel.tjs",			// ゲーム常駐パネル汎用
+//		"mfchange.tjs",				// メッセージ窓切り替え汎用
+//		"scnchart_*.tjs",			// フローチャート機能
+//		"tipsbase.tjs",				// TIPS機能
+//		"snapcapture.tjs",			// 画面キャプチャ汎用
+//		"mswrclick.tjs",			// マウス中・右クリックカスタマイズ（※gesture排他？）
+
+			]);
+}
+
+//KAGLoadScript("pstand.tjs");
+//KAGLoadScript("pemotion.tjs");
+
+//KAGLoadScript("GFX_MMV.tjs");
+KAGLoadScript("AffineSourceMMV.tjs");
+
+
+KAGLoadScript('skipautostopse.tjs');
+
+
+//--------------------------------------------------------------
+// 固有実装
+
+//KAGLoadScriptIfDebug("mydebug.tjs");
+
+
+@set (USE_MESSAGE_DRAGMOVE = 0) // uigame:メッセージ窓ドラッグ移動機能
+@set (USE_SAVELOAD_SCROLL = 1)  // uifile:セーブロード画面スクロール
+@set (USE_NAMEINPUT = 0)        // uimain:名前入力 （※要nameinput.ks）
+
+// オンデマンドコンパイルロード
+OndemandCompiledLoad(
+	"quickpanel.tjs",
+	"ezsave.tjs",
+	"quickconf.tjs",
+
+	"uisystem.tjs",
+	"uimain.tjs",
+	"uigame.tjs",
+	"uifile.tjs",
+//	"uivoice.tjs",
+	"uioption.tjs",
+	"uiextra.tjs",
+	"uistand.tjs",
+	);
+
+//------------------------------
+
+@set (UIDS_DISABLE_SNAPSHOT=1) // スクリーンショット機能は未使用
+{
+	var dmmcloud = "dmmcloud.tjs";
+	if (System.getArgument("-dmmcloud") == "yes") {
+		if (Storages.isExistentStorage(dmmcloud)) {
+			try {
+				KAGLoadScript(dmmcloud);
+			} catch (e) {
+				var text = e ? e.message : "unknown";
+				System.inform(@"Internal error: ${text}");
+				System.exit(1);
+			}
+		} else {
+			System.inform(@"Internal error: ${dmmcloud} not found.");
+			System.exit(1);
+		}
+	}
+}
+
+function checkDMMCloud() { return typeof global.DMMCloud == "Object"; }
+
+
+@if (APPEND_EXTENTION)
+SetupAppendData();
+@endif

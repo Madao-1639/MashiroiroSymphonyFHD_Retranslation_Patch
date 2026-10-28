@@ -1,0 +1,142 @@
+/*
+検索パスの追加登録方法：
+ setupSubFolders([ サブフォルダ名, ... ]);
+  サブフォルダ名：data/以下のフォルダ名。サブサブフォルダ以下は"/"で区切る
+ */
+
+addArchive("dmmcloud");
+//addArchive("video2");
+addArchive("fgimage2");
+addArchive("anim");
+
+setupSubFolders([
+/* 記述例：
+	"scenario/part1"
+	"scenario/part2"
+
+	"fgimage/chara1",
+	"fgimage/chara2",
+
+	"image/cutin",
+	"image/effect/type1",
+	"image/effect/type2",
+
+	"voice/chara1",
+	"voice/chara2",
+ここまでコメント
+*/
+
+	"psp_cg/",
+
+	"fgimage/_sinfo",
+	"fgimage/rename",
+	"fgimage/evecuation/sn",
+	"fgimage/evecuation/sk",
+	"fgimage/evecuation/ro",
+	"fgimage/evecuation/ro1",
+	"fgimage/evecuation/ro2",
+	"fgimage/evecuation/pa",
+	"fgimage/evecuation/rk",
+	"fgimage/evecuation/mu",
+	"fgimage/evecuation/mupa",
+	"fgimage/evecuation/na",
+	"fgimage/evecuation/nanb",
+	"fgimage/evecuation/nb",
+	"fgimage/evecuation/mp",
+	"fgimage/evecuation/ht",
+	"fgimage/evecuation/mc",
+	"fgimage/evecuation/ar",
+	"fgimage/evecuation/ag",
+	"anim/",
+	"anim/fhd",
+
+
+// 切り直し立ち絵
+	"fgimage/_sinfo",
+	"fgimage/_stand",
+	"fgimage/st_ag",
+	"fgimage/st_ar",
+	"fgimage/st_ht",
+	"fgimage/st_mc",
+	"fgimage/st_mu",
+	"fgimage/st_pa",
+	"fgimage/st_rk",
+	"fgimage/st_ro",
+	"fgimage/st_sk",
+	"fgimage/st_sn",
+	"fgimage/st_yk",
+
+	"evimage/large",
+	"evimage/sdcg",
+	"cg",
+
+
+	"voice/yk",
+	"voice/ag",
+	"voice/ar",
+	"voice/bc",
+	"voice/da",
+	"voice/db",
+	"voice/dm",
+	"voice/E",
+	"voice/fa",
+	"voice/ft",
+	"voice/ga",
+	"voice/gb",
+	"voice/gm",
+	"voice/go",
+	"voice/ht",
+	"voice/ja",
+	"voice/jb",
+	"voice/jc",
+	"voice/jd",
+	"voice/jf",
+	"voice/jo",
+	"voice/jt",
+	"voice/ko",
+	"voice/kp",
+	"voice/kr",
+	"voice/ky",
+	"voice/mc",
+	"voice/mp",
+	"voice/mu",
+	"voice/pn",
+	"voice/ra",
+	"voice/rb",
+	"voice/rk",
+	"voice/sa",
+	"voice/sb",
+	"voice/sc",
+	"voice/sd",
+	"voice/sk",
+	"voice/sn",
+	"voice/st",
+	"voice/tc",
+	"voice/wc",
+	"voice/ya",
+	"voice/yb",
+	"voice/yj",
+	"voice/sysvoice",
+
+	"image/logface",
+	"image/kinkyu",
+
+//	"uipsd/disabler",
+
+//スタッフロール
+//	"scenario/staffroll",
+
+	]);
+
+
+// 特殊アペンド情報定義
+var AppendDataConfig = %[
+	"group" => [ "edition", [ 1, 2 ] ],
+	"patch_append1"  => "data_sana",
+	"patch_append2"  => "data_fhd",
+	];
+
+KAGLoadScript("append_init.tjs");
+
+// scenario/ 再帰フォルダ追加
+addAutoPathRecursive(System.exePath+"scenario/", false, tkdlVerbose) if (debugWindowEnabled && !inXP3archivePacked);

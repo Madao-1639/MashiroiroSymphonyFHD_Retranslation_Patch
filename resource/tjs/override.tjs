@@ -1,0 +1,2531 @@
+﻿Plugins.link("csvParser.dll");
+
+// ssShift ssCtrl ssAlt 合成済み値
+global.ssShiftCtrlAlt       = ssShift | ssCtrl | ssAlt;
+global.ssShiftCtrlAltRepeat = global.ssShiftCtrlAlt | ssRepeat; // 上記にリピートを追加
+
+
+// ---------------------------------------------------------
+// KAGの状態に対する対応
+// ---------------------------------------------------------
+
+// 状態が変わったかどうかをチェックする
+var modeChangeCheckHash = %[];
+function isModeChanged(name, value) {
+	var old = modeChangeCheckHash[name];
+	modeChangeCheckHash[name] = value;
+	return old !== value;
+}
+function resetModeChanged() {
+	modeChangeCheckHash = %[];
+	kag.callHook("onResetModeChanged");
+}
+
+// システムメニューのスクリプトを登録できるようにする
+var inSystemMenuStorages = %[];
+function setSystemMenuStorage(storage, inMenu = true) {
+	//	dm(":::setSystemMenuStorage", storage);
+	var name = storage.toLowerCase();
+	inSystemMenuStorages[name] = inMenu if (name != "");
+}
+// first.ks ではロード不可
+setSystemMenuStorage("first.ks");
+
+// システムメニュー中かどうか
+function inSystemMenu(kag) {
+	with (kag) {
+		var ex  = (.conductor == .extraConductor);
+		var cur = ex ? .extraConductor.curStorage : .currentStorage;
+		cur = (typeof cur === "String") ? cur.toLowerCase() : "";
+		cur = (cur != "") ? inSystemMenuStorages[cur] : void;
+		return (cur !== void) ? cur : ex;
+	}
+}
+// タイトル画面かどうか
+function inTitleMenu(kag) {
+	return kag.conductor.curStorage == "title.ks";
+}
+
+// コンフィグ画面を開けるか
+function canConfig(kag, modal) {
+	return !inSystemMenu(kag) && !modal && kag.inStable;
+}
+
+// メッセージウィンドウ上のボタン（表裏とも）のプロパティを変更
+class ForeBackPropChanger {
+	var _fore, _back;
+	function ForeBackPropChanger() {}
+	function finalize() {}
+	function reset(kag, num) {
+		_fore = _back = void;
+		try {
+			switch (typeof num) {
+			case "Integer":
+				_fore = kag.fore.messages[num].buttons;
+				_back = kag.back.messages[num].buttons;
+				break;
+			case "Object":
+				_fore = num;
+				break;
+			}
+		} catch {}
+	}
+	function set(name, prop, value) {
+		_fore[name][prop] = value if (_fore !== void && typeof _fore[name] !== "undefined");
+		_back[name][prop] = value if (_back !== void && typeof _back[name] !== "undefined");
+	}
+	function setEnabled(name, value) { set(name, "enabled", value); }
+	function setToggle( name, value) { set(name, "toggle",  value); }
+	function checkEnableChanged(name, tag, value) {
+		var ret = isModeChanged(tag, value);
+		setEnabled(name, value) if ret;
+		return ret;
+	}
+	function checkToggleChanged(name, tag, value) {
+		var ret = isModeChanged(tag, value);
+		setToggle(name, value) if ret;
+		return ret;
+	}
+	function get(name, prop) {
+		if (_fore !== void && typeof _fore[name] !== "undefined" && typeof _fore[name][prop] !== "undefined") return _fore[name][prop];
+		if (_back !== void && typeof _back[name] !== "undefined" && typeof _back[name][prop] !== "undefined") return _back[name][prop];
+		return void;
+	}
+}
+
+/**
+ * モード変更
+ * ポイント1: 原則としてメニューの対応する項目の設定をひっぱってきている
+ * ポイント2: AUTO ボタンについては ON/OFF 制御を画像に反映させている
+ * ポイント3: Config メニューは KAG の基本にないのでメニューについてもここで制御
+ *     
+ */
+var onModeChangeMessageLayerNum = 0;
+var onModeChangePropChanger = void;
+function onModeChange(kag, *) //autoMode, skipMode, canAuto, canSkip, selectShowing, modal, canRun)
+{
+	//dm("onModeChanged:", autoMode, skipMode, canAuto, canSkip, selectShowing, modal);
+	var prop = onModeChangePropChanger;
+	/**/prop = onModeChangePropChanger = new ForeBackPropChanger() if (prop === void);
+	prop.reset(kag, /*MessageLayer Num:*/ onModeChangeMessageLayerNum);
+
+	if (!kag.callHook("onModeChangeHookEx", prop, kag, *))
+		DefaultModeChangeProc(prop, kag, *);
+	return prop;
+}
+function DefaultModeChangeProc(prop, kag, autoMode, skipMode, canAuto, canSkip, selectShowing, modal, canRun)
+{
+	var enabled;
+	var inTitle = inTitleMenu(kag);
+	var inGame  = inGameState(kag);
+	var stable  = kag.inStable;
+
+	with (prop) {
+		// セーブボタンの有効状態
+		if (.checkEnableChanged("save", "canSave", (enabled = kag.storeMenu.enabled)))
+			.setEnabled("qsave", (kag.quickStoreMenu.enabled = enabled));
+
+		// ロードボタンの有効状態
+		.checkEnableChanged("load",  "canLoad",  (enabled = kag.restoreMenu.enabled &= (inTitle || !inSystemMenu(kag))));
+		.checkEnableChanged("qload", "canQLoad", (kag.quickRestoreMenu.enabled = enabled && SystemAction.canQuickLoad));
+
+		// バックログボタンの有効状態
+		.checkEnableChanged("log",  "canLog",  kag.showHistoryMenuItem.enabled);
+
+		// オートボタンの有効状態
+		enabled = canAuto;
+		if (.get("auto", "noStable")) enabled = inGame && canRun && !kag.skipMode; // nostable設定の場合はinStableを無視する
+		.checkEnableChanged("auto", "canAuto", enabled);
+
+		// スキップ・次の選択肢・前の選択肢の有効状態
+		.checkEnableChanged("prev", "canPrev", (kag.goBackMenuItem.enabled &= inGame));
+		.checkEnableChanged("next", "canNext", (kag.goNextMenuItem.enabled = canSkip && !autoMode && !skipMode));
+@if (SCENESKIP_ENABLED)
+		.checkEnableChanged("prevscn", "canPrevScn", (kag.goPrevScnMenuItem.enabled = inGame && stable && SystemAction.canPrevScn));
+		.checkEnableChanged("nextscn", "canNextScn", (kag.goNextScnMenuItem.enabled = kag.goNextMenuItem.enabled));
+@endif
+		if (.get("skip", "noStable")) with(kag) enabled = inGame && canRun && .nextSkipEnabled && (.allskip || .getCurrentRead()); // nostable設定の場合はinStableを無視する
+		else enabled = canSkip;
+		.checkEnableChanged("skip", "canSkip",  enabled); //kag.skipToNextStopMenuItem.enabled));
+@if (BACKSKIP_ENABLED)
+		var rev, inBackSkip = skipMode >= SKIP_STOP && (rev=world_object.reversePlay) != 0;
+		if (.checkToggleChanged("backskip", "backSkip", inBackSkip && rev > 0)) {
+			kag.skipToPrevStopMenuItem.checked = inBackSkip;
+		}
+		with (kag) enabled = !modal && !(.transShowing || .panelShowing) && (prop.get("skip", "noStable") || .inStable);
+		.checkEnableChanged("backskip", "canBkSkip",  enabled);
+		if (inBackSkip) skipMode = false;
+@endif
+@if (BACKONE_ENABLED)
+		.checkEnableChanged("backone",  "canBackOne", kag.backOneMenuItem.enabled = (inGame && stable && SystemAction.canBackOne));
+@endif
+		// オートとスキップのトグル変更
+		/**/.checkToggleChanged("auto", "autoMode", autoMode);
+		if (.checkToggleChanged("skip", "skipMode", skipMode)) {
+			kag.skipToNextStopMenuItem.checked = skipMode; // KAGの方ではチェックしてくれないようなので
+		}
+
+		// コンフィグボタンの有効状態
+		if (typeof kag.configMenuItem != "undefined" &&
+			.checkEnableChanged("option", "canConf", (enabled = canConfig(kag, modal))))
+			kag.configMenuItem.enabled = enabled;
+
+		// メッセージウィンドウを隠すボタンの有効状態
+		.checkEnableChanged("hide", "canHide", (!inSystemMenu(kag) && !modal && stable));
+
+		// ボイスリプレイ機能有効状態
+		enabled = (kag.hasCurrentVoice) && stable && !autoMode && inGame;
+		if (.checkEnableChanged("vreplay", "voiceReplay", enabled)) {
+			kag.voiceReplayMenuItem.enabled = enabled if (typeof kag.voiceReplayMenuItem == "Object");
+		}
+	}
+	with (kag) {
+		// タイトル中はタイトルへ戻るメニューは無効
+		.goToStartMenuItem.enabled &= !inTitle if (typeof .goToStartMenuItem == "Object");
+		// フォント変更メニュー
+		.chChangeFontMenuItem.enabled = .inStable if (typeof .goToStartMenuItem == "Object");
+	}
+}
+
+// ---------------------------------------------------------
+// メニュー関連処理
+// ---------------------------------------------------------
+
+// -----------------------------
+// Array/Dictionary の記述によるメニュー構築
+function createMenuFromList(win, menu, list) {
+	if (typeof list !== "Object" || !(list instanceof "Array")) return;
+	for (var i = 0; i < list.count; i++) {
+		var item = list[i];
+		switch (typeof item) {
+		case "void": break;
+		case "String": menu.add(new MenuItem(win, item)); break; // 区切り等
+		case "Object":
+			if (item instanceof "Dictionary") with (item) {
+				var exp = .exp;
+				if (.se != "") {
+					var se = getSysSE(.se);
+					if (se.storage != "") exp = %[ exp:exp, clickse:se.storage, clicksebuf:se.buf];
+				}
+				if (.name != "" && .func != "" && typeof global.updateCaptionMenusMap == "Object") {
+					if (global.updateCaptionMenusMap[.func] != "") {
+						Debug.notice("CaptionMenusMap conflict:", .func, .name, updateCaptionMenusMap[.func]);
+					}
+					updateCaptionMenusMap[.func] = .name;
+				}
+				var sub = (.flagname == "" ? (new KAGMenuItem        (win, .caption, +.group, exp, .autoenable))
+						   :                 (new KAGAutoFlagMenuItem(win, .caption, .flagname, item)));
+				win[.name] = sub if (.name != ""); // nameがあればウィンドウのアイテムとして登録
+				menu.add(sub) if (!.noadd); // noadd指定がない場合は子メニューとして追加
+				createMenuFromList(win, sub, .children) if (.children !== void); // 子メニュー登録
+				if (.prop !== void) // プロパティ登録
+					foreach(.prop, function(tag, value, dic, sub) { if (tag !== void) sub[tag] = value; }, sub);
+			}
+			break;
+		}
+	}
+}
+// チェックメニューの更新
+function updateCheckMenuItem(item, value, prop = "value", group) {
+	if (item !== void) with (item) {
+		if (group !== void && !(.group == group && .radio)) return;
+		if (typeof ._default  != "undefined" && value == "") value = ._default;
+		if (typeof item[prop] != "undefined") .checked = (item[prop] == value);
+	}
+}
+// ラジオメニューの更新
+function updateRadioMenuItem(menu, value, prop = "value", group) {
+	if (typeof menu == "String")
+		with (global) menu = (.kag !== void && isvalid .kag) ? .kag[menu] : void;
+
+	if (menu === void) return;
+	var list = [];
+	list.assign(menu.children);
+	if (list.count == 0) {
+		// 子が無い場合はチェックメニューとして処理
+		updateCheckMenuItem(menu, value, prop);
+	} else {
+//		with (menu) if (value == "" && typeof ._default != "undefined") value = ._default;
+		for (var i = 0; i < list.count; i++)
+			updateCheckMenuItem(list[i], value, prop, (group === void) ? 1 : +group);
+	}
+}
+// ラジオメニューの有効化・無効化
+function setEnableMenuGroup(menu, group, en) {
+	if (typeof menu == "String")
+		with (global) menu = (.kag !== void && isvalid .kag) ? .kag[menu] : void;
+
+	if (menu === void) return;
+	var list = [];
+	list.assign(menu.children);
+	for (var i = 0; i < list.count; i++)
+		list[i].enabled = en if (list[i].group == group);
+}
+
+// メニューアイテムをクリックする
+function clickMenuItem(name, another, *) {
+	if (typeof kag[name] !== "undefined") {
+		with (kag[name]) { .click() if (.enabled && .accessible); }
+	} else if (another !== void) {
+		another(*);
+	}
+}
+
+// -----------------------------
+// userConf の設定ファイルを変更
+function changeUserConf(name, value)
+{
+	var cfu, path;
+
+	// cfu のパスを求める
+	with (global.kag) {
+		if (.readOnlyMode) return;
+		path = System.dataPath;
+	}
+	path += "/" if (path.charAt(path.length-1) != "/");
+	with (Storages) path += .chopStorageExt(.extractStorageName(System.exeName));
+	path += ".cfu";
+
+	// saveStructプラグインをリンクする
+	var ins = [], ss = "savestruct.dll";
+	ins.assign(Plugins.getList());
+	if (ins.find(ss) < 0) try { Plugins.link(ss); }
+	catch { System.inform("設定を保存できませんでした: プラグイン読み込み失敗"); }
+
+	// cfu を読み込む
+	if (Storages.isExistentStorage(path)) {
+		cfu = [];
+		try { cfu.load(path); } catch { cfu = void; }
+	}
+	// ない場合はデフォルトテキストを設定
+	if (cfu === void) cfu = [
+		'; ============================================================================',
+		'; *DO NOT EDIT* this file unless you are understanding what you are doing.',
+		'; FYI:',
+		';  Each line consists of NAME="VALUE" pair, VALUE is a series of',
+		';  \\xNN, where NN is hexadecimal representation of UNICODE codepoint.',
+		';  For example, opt="\\x61\\x62\\x63\\x3042\\x3044\\x3046" means that the',
+		';  value of options "opt" is alphabets a, b, and c followed by Japanese',
+		';  Hiraganas A, I, and U.',
+		';  DO NOT PUT non-escaped value like opt="abc". This doesn\'t work and should',
+		';  be like opt="\\x61\\x62\\x63".',
+		'; ============================================================================' ];
+
+	// 設定する値を生成
+	var update = name + '="';
+	for (var i = 0; i < value.length; i++)
+		update += "\\x%X".sprintf(# value.charAt(i));
+	update += '"';
+
+	// 全行パースして置換
+	var find = false;
+	for (var i = 0; i < cfu.count; i++) {
+		var line = cfu[i];
+		if (line.indexOf(name+'="') == 0) {
+			// 重複がある場合は最初のみ有効
+			cfu[i] = find ? ";" : update;
+			find = true;
+		}
+	}
+	// 見つからなかった場合は最後に追加
+	if (!find) cfu.add(update);
+
+	// セーブする
+	try { cfu.save2(path); }
+	catch { System.inform(@"設定を保存できませんでした: 書き込み失敗\n${Storages.getLocalName(path)}"); }
+}
+
+// -----------------------------
+// 直引数とメニューアイテムクリックの場合の両対応の値取得
+function getSysArgValue(arg, type) {
+	var ret;
+	switch (typeof arg) {
+	case "Integer":
+		switch (type) {
+		case "Integer": ret = arg; break;
+		case "Boolean": ret = arg ? "yes" : "no"; break;
+		case "String":  ret = (string)arg; break;
+		}
+		break;
+	case "String":
+		switch (type) {
+		case "Integer": ret = (int)arg; break;
+		default:        ret = (string)arg; break;
+		}
+		break;
+	case "Object":
+		if (typeof arg.value != "undefined") {
+			ret = arg.value;
+			switch (type) {
+			case "Integer": ret = (int)ret; break;
+			case "String":  ret = (string)ret; break;
+			}
+		}
+		break;
+	}
+	return ret;
+}
+
+// -----------------------------
+// -----------------------------
+
+// 吉里吉里のバージョンをチェック
+function checkSystemVersion(comp) {
+	var a = System.versionString.split(".");
+	var b = comp.split(".");
+	var get = function (s) {
+		if (s != "") for (var i = 0; i < s.length; i++)
+			if (s.charAt(i) != "0") return +(s.substr(i));
+		return 0;
+	};
+	for (var n = 0; n < 4; n++) {
+		var now = get(a[n]), chk = get(b[n]);
+		if (now != chk) return (now > chk);
+	}
+	return true;
+}
+// 現在のWindowsのバージョン
+property currentWindowsVersion { getter {
+	var ver, os;
+	if (typeof System.getOSVersion == "Object" && (typeof (os = System.getOSVersion()) == "Object") && os) with (os) {
+		var exp = .major == 10 ? "%d.%02d%d".sprintf(.major, Math.min(.minor, 99), .build) : "%d.%d".sprintf(.major, .minor);
+		ver = +exp;
+	} else {
+		os = void;
+		var m = (new RegExp("^Windows [^\\s]+ (\\d+\\.\\d+)", "i")).match(System.osName);
+		ver = (m.count > 0) ? +m[1] : 0;
+	}
+	&global.currentWindowsVersion = ver if (os); // cached
+	dm("currentWindowsVersion", ver);
+	return ver;
+} }
+
+// Windowsのバージョンをチェック
+function checkWindowsVersion(chk) {
+	// バージョン番号のマップ
+	if (typeof global.checkWindowsVersionMap == "undefined") {
+		/**/   global.checkWindowsVersionMap = %[  
+			"95"    => 4,	"98" => 4.1,	"me"   => 4.9,
+			"2000"  => 5,	"xp" => 5.1,	"2003" => 5.2,
+			"vista" => 6,	"7"  => 6.1,	"8"    => 6.2, "8.1"=> 6.3,
+			"10"    => 10,
+			"11"    => 10.0022000 ];
+	}
+	chk = global.checkWindowsVersionMap[chk.toLowerCase()] if (typeof chk == "String" && chk != "");
+	return (chk != "") ? ((global.currentWindowsVersion) >= +chk) : false;
+
+	// [XXX]
+	property canMFEVR { getter {
+		with (global) return false @if (ENABLE_MOVIE_MFEVR) || (.kirikiriz && typeof .vomMFEVR != "undefined" && .checkWindowsVersion("7")) @endif ;
+	} }
+
+	function getVomStyle(mode, enlog) {
+		const self = global.checkWindowsVersion;
+		mode = System.getArgument("-vomstyle") if (mode == "");
+		switch (mode) {
+		case "overlay": case "mixer": case "layer": break;
+		case "mfevr":
+			if (!self.canMFEVR) {
+				Debug.notice("vomMFEVR not supported") if enlog;
+				mode = "mixer";
+			}
+			break;
+		default:
+			var mfevr = SystemConfig.sysmovieUseMFEVRbyAuto;
+			if (mfevr === void) mfevr = self("10"); // [XXX]
+			mode = (self.canMFEVR && mfevr) ? "mfevr" : self("2000") ? "mixer" : "overlay";
+			break;
+		}
+		return mode;
+	}
+}
+
+
+// 一旦画面モードを変更して戻す（設定反映用）
+function resetScreenMode(isfull, forcetrig = false) {
+	if (!isvalid global.kag) return;
+	with (global.kag) {
+		if (!forcetrig) {
+			if (.drawDevice instanceof "DrawDeviceD3D") {
+				// DrawDeviceD3D専用処理
+				.d3dStretchType = (System.getArgument("-smoothzoom") == "no") ? stNearest : stLinear; // [XXX] type選択可能に
+			}
+			else if (typeof .drawDevice.recreate == "Object") {
+				// recreate()がある場合は呼ぶ（BasicDrawDevice等も含む）
+				if (.drawDevice instanceof "PassThroughDrawDevice") with (.drawDevice) {
+					// 吉里吉里2向けの標準DrawDeviceの場合は種別を再反映
+					var dt = .dtNone;
+					switch (System.getArgument("-dbstyle")) {
+					case "d3d":   dt = .dtDBD3D; break;
+					case "ddraw": dt = .dtDBDD;  break;
+					case "gdi":   dt = System.getArgument("-usedb") == "yes" ? .dtDBGDI : .dtDrawDib; break;
+					}
+					.preferredDrawer = dt;
+				}
+				.drawDevice.recreate();
+			}
+			systemUpdate("fullscreen");
+			updatePassThroughMenuItem();
+		} else {
+			var trig, name = "resetScreenModeTrigger";
+			if (( isfull  && !.fullScreened) ||
+				(!isfull  &&  .fullScreened)) return;
+			// トリガ取得
+			if (typeof kag[name] != "undefined") trig = kag[name];
+			else { // トリガがない場合は生成
+				kag[name] = trig = new AsyncTrigger(kag, 'onResetScreenModeTrigger');
+				trig.cached = true;
+				trig.mode = atmAtIdle;
+				kag.onResetScreenModeTrigger = function() {
+					global.System.setArgument("-fsres", fsres) if (hasset);
+					global.kag[isfull ? "onFullScreenMenuItemClick" : "onWindowedMenuItemClick"]();
+				} incontextof trig;
+			}
+			// トリガ設定
+			with (trig) {
+				.isfull = isfull;
+				.hasset = (typeof System.setArgument != "undefined");
+				if (.hasset) {
+					.fsres = System.getArgument("-fsres");
+					System.setArgument("-fsres", "nochange");
+				}
+			}
+			// 画面を一旦変更
+			.fullScreen = .fullScreened = !isfull;
+			// トリガでメニューをクリックさせる
+			trig.trigger();
+		}
+	}
+}
+
+function reFullScreen() { updateFullScrZoomMenu(); resetScreenMode(true, true); }
+function resetScreen()  { resetScreenMode(kag.fullScreened); }
+function updateFullScrZoomMenu(menu = "fullScrResMenu") {
+	if (typeof global.kag != "Object" || !kag || !isvalid global.kag) return;
+	var res  = System.getArgument("-fsres"), pseudo = kag.isPseudoMode();
+	var isauto = (res == "" || res == "auto");
+	var ismiddle = (System.getArgument("-fszoom") == "middle");
+	var info = SystemArgumentInfo;
+	setEnableMenuGroup(menu, info.fszoom.group, !isauto || pseudo);
+	setEnableMenuGroup(menu, info.fsres.group, !pseudo);
+	if (pseudo) updateRadioMenuItem(info.fsres.menu, "nochange",, info.fsres.group);
+	else        updateSysArgMenuItem(   "fsres");
+
+	if (ismiddle || (isauto && !pseudo)) {
+		var tag = "inner";
+		/**/tag = "middle" if (ismiddle && pseudo);
+		updateRadioMenuItem(info.fszoom.menu, tag,, info.fszoom.group);
+	} else updateSysArgMenuItem("fszoom");
+	if (typeof kag.middleZoomPercentMenuItem == "Object")
+		/**/   kag.middleZoomPercentMenuItem.enabled = (ismiddle && pseudo);
+	if (typeof kag.fullScrResMiddleMenuItem == "Object")
+		/**/   kag.fullScrResMiddleMenuItem.enabled = pseudo;
+}
+function onDisplayChangedHook() {
+	updateFullScrZoomMenu();
+	systemUpdate("windowSize");
+}
+
+// 旧chkMonitorプラグイン互換関数
+function CheckPrimaryMonitor(win) {
+	try {
+		var rect, mons;
+		if (typeof System.getDisplayMonitors != "undefined" &&
+			typeof win.getWindowRect != "undefined" &&
+			(rect = win.getWindowRect()) !== void) {
+
+			with (rect) mons = System.getDisplayMonitors(.x, .y, .w, .h);
+			if (mons !== void) {
+				for (var i = 0; i < mons.count; i++) {
+					if (mons[i] === void || mons[i].primary) continue;
+					return 0;
+				}
+				return 1;
+			}
+		}
+	} catch {}
+	return -1;
+}
+
+// -----------------------------
+// System.setArgument 系
+
+// 吉里吉里の引数の型と対応メニューの情報，変更時の処理など
+var SystemArgumentInfo = %[
+fsres:      %[ type:"String",  changed:reFullScreen ],
+fszoom:     %[ type:"String",  changed:function {
+	if (typeof global.kag == "Object" && kag && isvalid kag) with (kag) try {
+		var resize = (.fullScreened ?
+					  (.pseudoFullScreened) : 
+					  (.maximized && System.getArgument("-maximizezoom") == "fszoom"));
+		if (resize) {
+			.onResize();
+			return;
+		}
+	} catch {}
+	reFullScreen();
+} incontextof global ],
+smoothzoom: %[ type:"Boolean", changed:resetScreen ],
+usedb:      %[ type:"Boolean", changed:resetScreen ],
+dbstyle:    %[ type:"String",  changed:function() { resetScreen(); updateSysArgMenuItem("usedb"); } incontextof global,
+/**/           isauto:function() { var dbs = System.getArgument("-dbstyle"); return (dbs == "" || dbs == "auto"); } incontextof global ],
+contfreq:   %[ type:"Integer", changed:"InfoApplyOnAfter:This setting may not take effect immediately." ],
+drawthread: %[ type:"String", changed:function() {
+	var num = System.getArgument("-drawthread");
+	switch (num) {
+	case "auto": num = 0; break;
+	default: try { num = +num; } catch { num = 1; } break;
+	}
+	System.drawThreadNum = num;
+	dm("SetDrawThreadNum", num);
+} incontextof global ],
+
+// トラブルシュート用設定
+vomstyle:      %[ type:"String", caption:"ムービー表示" ],
+fullscreenmode:%[ type:"String", caption:"複数モニタ全画面", changed:function { updateFullScrZoomMenu(); reFullScreen(); } incontextof global ],
+fsmethod:      %[ type:"String",  changed:reFullScreen ],
+waitvsync:     %[ type:"Boolean", changed:function { try { kag.flipStart(); } catch {} } incontextof global ],
+memusage:      %[ type:"Boolean", restart:true ],
+curmove:       %[ type:"Boolean", changed:function { 
+	MyYesNoDialog.setCursorMoveTime(System.getArgument("-curmove"));
+	systemUpdate("curMove") if (typeof global.systemUpdate == "Object");
+} incontextof global ],
+wheel:         %[ type:"Boolean", restart:true ],
+joypad:        %[ type:"Boolean", restart:true ],
+vermenu:       %[ type:"Boolean", restart:true ],
+
+// デバッグ用
+autoerrlogopen:%[ type:"Boolean" ],
+autoerrlogmove:%[ type:"Boolean" ],
+consolerepos:  %[ type:"Boolean" ],
+consolesyncpos:%[ type:"Boolean" ],
+debuginfoscale:%[ type:"String", changed:function(info,v) { kag.debuginfoscale = void; } incontextof global ],
+uiparsecache:  %[ type:"Boolean" ],
+	];
+
+
+// -----------------------------
+// メニュー更新・cfu保存処理つき System.setArgument
+function setSystemArgument(tag, arg) {
+	var value, info = (tag != "") ? SystemArgumentInfo[tag] : void;
+
+	// 変更する値を取得
+	if (info === void || (value = getSysArgValue(arg, info.type)) === void) return;
+
+	// SystemArgument 設定
+	var old  = System.getArgument("-"+tag), changed = (old != value);
+	if (typeof System.setArgument == "undefined") changed = void;
+	else       System.setArgument("-"+tag, value);
+	var restart = info.restart;
+	if (restart) changed = restart < 0 ? null : void;
+
+	// メニューを更新
+	updateRadioMenuItem(info.menu, value,, info.group);
+
+	// cfu に保存
+	changeUserConf(tag, (string)value);
+	return changed;
+}
+// デフォルト設定用 System.setArgument
+function setDefaultSystemArgument(tag, value, callchg = true) {
+	// 何か設定済みなら何もしない
+	if (tag == "" || System.getArgument("-"+tag) != "") return;
+	// メニュー更新があるならそちらを呼ぶ
+	var info = (tag != "") ? SystemArgumentInfo[tag] : void;
+	if (info !== void) {
+		var ret = setSystemArgument(tag, value);
+		info.changed(info, ret) if (callchg && typeof info.changed == "Object");
+		return ret;
+	}
+	// それ以外は普通に設定し，cfuを更新
+	System.setArgument("-"+tag, value);
+	changeUserConf(tag, (string)value);
+	return true;
+}
+
+// System.setArgument 系メニューの更新処理
+function setSysArgMenuItem(tag, arg) {
+	if (typeof tag == "Object") {
+		arg = tag, tag = void;
+		tag = arg.parent.tag if (typeof arg.parent != "undefined" && typeof arg.parent.tag != "undefined");
+		if (tag != "" && tag.indexOf(":") >= 0) {
+			var div = (":"+tag).split(":");
+			tag = div[+arg.group];
+		}
+	}
+	var info = (tag != "") ? SystemArgumentInfo[tag] : void;
+	if (info === void) return;
+	var chg = setSystemArgument(tag, arg, info.type, info.menu);
+	var mes = "InfoApplyOnRestart:設定は再起動後に有効となります";
+	function _dlgtext(mes) {
+		var n = mes.indexOf(":");
+		if (n > 0) mes = GetSystemConfigItem(mes.substr(0, n), mes.substr(n+1));
+		return mes;
+	}
+	if (chg === null) {
+		var text =    _dlgtext(mes);
+		text += "\n"+ _dlgtext("InfoApplyRebootNow:今すぐ再起動しますか？");
+		
+		var reboot = System.confirm(text, System.title, kag);
+		if (reboot) {
+			var ingame = typeof global.canRedrawFrameAndText == "Object" ? canRedrawFrameAndText() : inGameState(kag);
+			if (ingame) with (kag) .saveBookMarkToFile(.getBookMarkFileNameBySystem("emergency"));
+			systemReboot();
+		}
+	} else if (chg === void || typeof info.changed == "String") {
+		mes = info.changed if (chg !== void && info.changed != "");
+		if (!info.dialog) System.inform(_dlgtext(mes));
+		info.dialog = true;
+	} else if (info.changed !== void) return info.changed(info, chg);
+}
+// メニュー項目名称を保存
+var sysArgMenuNameList = [];
+function addSysArgMenu(name, tag, grp) {
+	if (tag == "") return;
+	if (tag.indexOf(":") >= 0) {
+		var div = tag.split(":");
+		for (var i = 0; i < div.count; i++)
+			addSysArgMenu(name, div[i], i+1);
+	} else {
+		sysArgMenuNameList.remove(tag, true);
+		sysArgMenuNameList.add(tag);
+		var info = SystemArgumentInfo[tag];
+		if (     info === void)                        Debug.notice(@"SystemArgumentInfo.${tag}: メニュー情報なし");
+		else if (info.menu != "" && info.menu != name) Debug.notice(@"SystemArgumentInfo.${tag}.menu: 重複（${name}/${info.menu}）");
+		else /**/info.menu = name;
+		info.group = grp if (grp !== void && info !== void);
+	}
+}
+function resetSysArgRadioMenuParent(name, tag, index) {
+	if (name == "" || tag == "") return;
+	var info = SystemArgumentInfo[tag];
+	if (info === void || typeof kag[name] != "Object" || typeof kag[info.menu] != "Object") return;
+	var grp = 0, par = kag[name], ext = kag[info.menu];
+
+	index = ext.index if (index === void && ext.parent === par);
+	ext.parent.remove(ext) if (ext.parent);
+	index = par.children.count if (index === void);
+	if (index !== void) {
+		var bar = new MenuItem(kag, "-");
+		par.insert(bar, index);
+	}
+	for (var i = ext.children.count-1; i >= 0; i--) {
+		var item = ext.children[i];
+		if (item !== void && item.radio) with (item) {
+			.groupTag = tag;
+			.caption = @"[${ext.caption}] " +.caption;
+			ext.remove(item);
+			par.insert(item, index);
+		}
+	}
+	var tags = par.resetChildItemGrouping();
+	var grp = tags.find(tag);
+	tags.remove(void, true);
+	par.tag = tags.join(":");
+
+	with (info) .menu = .group = void;
+	sysArgMenuNameList.remove(tag, true);
+	addSysArgMenu(name, par.tag);
+	if (global.kirikiriz) {
+		updateSysArgMenuItem(tags*);
+	}
+}
+
+// System.setArgument 系メニューの createMenuFromList 用辞書を返す（ラジオリスト用）
+function getSysArgRadioMenu(name, caption, tag, visible, list, group = 1) {
+	addSysArgMenu(name, tag);
+	return %[
+	name:name, caption:caption, prop:%[ tag:tag, visible:visible ],
+	children: getSysArgRadioSubMenu(list, group)
+		];
+}
+function getSysArgRadioSubMenu(list, group) {
+	var ret = [];
+	for (var item, i = 0; i < list.count; i++) {
+		switch (typeof (item = list[i])) {
+		case "String":
+			if (item.indexOf(":") >= 0) {
+				item = item.split(":");
+				var value = item[0].trim(), caption = item[1].trim();
+				var name = (item.count > 2) ? item[2].trim() : void;
+				var grp = (item.count > 3 && +item[3] > 0) ? +item[3] : group;
+				item = %[ name:name, caption:caption, group:grp, exp:setSysArgMenuItem, prop:%[] ];
+				if (value.charAt(0) == "*") {
+					value = value.substr(1).trim();
+					item.prop._default = value;
+				}
+				item.prop.value = value;
+			} else if (item != "-") break;
+			// not break;
+		case "Object":
+			ret.add(item);
+			break;
+		}
+	}
+	return ret;
+}
+
+// System.setArgument 系メニューの createMenuFromList 用辞書を返す（on/offチェック用）
+function getSysArgCheckMenuItem(name, caption, tag, visible, defval, chkval = "yes", noval = "no") {
+	addSysArgMenu(name, tag);
+	return %[
+	name:name, caption:caption,
+	prop:%[ tag:tag, visible:visible, value:chkval, novalue:noval, _default:defval ],
+	exp:function(sender) {
+		with (sender) setSysArgMenuItem(.tag, .checked ? .novalue : .value);
+	} ];
+}
+// System.setArgument 系メニューの現在の値を更新
+function updateSysArgMenuItem(menus*) {
+	if (!menus.count && sysArgMenuNameList.count > 0) return updateSysArgMenuItem(sysArgMenuNameList*);
+	for (var i = 0; i < menus.count; i++) {
+		var tag, menu = menus[i];
+		switch (typeof menu) {
+		case "Object": tag = menu.tag if (typeof menu.tag != "undefined"); break;
+		case "String": tag <-> menu; menu = SystemArgumentInfo[tag].menu; break;
+		}
+		if (tag == "") continue;
+		var div = (tag.indexOf(":") >= 0) ? tag.split(":") : [ tag ];
+		for (var j = 1; j <= div.count; j++) {
+			var tag = div[j-1];
+			var info = (tag != "") ? SystemArgumentInfo[tag] : void;
+			var grp = (info !== void) ? info.group : void;
+			updateRadioMenuItem(menu, System.getArgument("-" + tag),, grp !== void ? grp : j);
+		}
+	}
+}
+
+
+/**
+ * パススルーメニューを更新する
+ * @param delay 0:遅延モード自動選択, 1:強制遅延, -1:即処理
+ */
+function updatePassThroughMenuItem(delay = 0) {
+	if (typeof global.kag != "Object" || !kag || !isvalid kag) return;
+	if (!global.kirikiriz) {
+		// 強制遅延フラグかオート設定ならトリガ経由にする
+		if (delay > 0 || (!delay && SystemArgumentInfo.dbstyle.isauto()))
+			return invokeDelayedTrigger("updatePassThroughMenuItem");
+
+		var win = global.kag;
+		if (!(win.drawDevice instanceof "PassThroughtDrawDevice") ||
+			typeof win.dispDoubleBufferMenu == "undefined") return;
+		var menu = win.dispDoubleBufferMenu;
+		var tag;
+
+		// 子メニューに状態を表示
+		with (global.Window.PassThroughDrawDevice) switch (win.drawDevice.drawer) {
+		case .dtDrawDib: tag = "[DIB]";        break;
+		case .dtDBGDI:   tag = "[GDI]";        break;
+		case .dtDBDD:    tag = "[DirectDraw]"; break;
+		case .dtDBD3D:   tag = "[Direct3D]";   break;
+		}
+		for (var c = menu.children, i = 0; i < c.count; i++) with (c[i]) {
+			if (.caption == "-") break;
+			.origCaption = .caption if (typeof .origCaption == "undefined");
+			if (.checked) .caption = @"${.origCaption} ${tag}";
+			else          .caption = .origCaption;
+		}
+		if (typeof win.useDoubleBufferMenuItem == "undefined") return;
+		/**/menu = win.useDoubleBufferMenuItem;
+		with (menu) {
+			var dbs = System.getArgument("-dbstyle");
+			dbs = (dbs == "d3d" || dbs == "ddraw");
+			.enabled = !dbs;
+			.value   =  dbs ? null : "no";
+			updateSysArgMenuItem(menu);
+		}
+	}
+}
+
+// -----------------------------
+// ウィンドウモード時のサイズ変更関連メニュー処理
+var windowResolutionWidthList = [
+	320, 400, 512, 640, 720, 800, 960, 1024, 1280, 1440, 1600
+	];
+function setWindowRes(arg) {
+	var w = getSysArgValue(arg, "Integer");
+	if (+w == 0) return;
+	w = kag.scWidth if (w < 0);
+	kag.setZoom(w, kag.scWidth);
+	updateWindowResMenu(arg.parent) if (typeof arg == "Object");
+}
+function getWindowResMenuItem(w, h, zw, scut) {
+	var zh = zw * h \ w;
+	return %[   name:@"windowResizeTo${zw}MenuItem", caption:(scut != "" ? "(&"+scut+") : ":"") + @"${zw} x ${zh}", group:1,
+			exp:setWindowRes, prop:%[ value:zw, scut:scut, visible:(zw <= System.screenWidth && zh < System.screenHeight) ] ];
+}
+function updateWindowResMenu(menu) {
+	with (kag) {
+		var now = .scWidth * .zoomNumer \ .zoomDenom;
+		updateRadioMenuItem(menu, (now != .scWidth) ? now : void);
+	}
+}
+function onWindowResizeHook(win, w, h) {
+	with (win) {
+		var pw = .pxWidth;
+		var ph = .pxHeight;
+		var dw = pw * .zoomNumer \ .zoomDenom;
+		var dh = ph * .zoomNumer \ .zoomDenom;
+//		dm("onWindowResizeHook/diff", w, h, dw, dh) if (dw != w || dh != h);
+
+		if (typeof .disableWindowResizeMenuItem != "undefined") {
+			var fmt = GetSystemConfigItem("DisableWindowResizeTextFormat", "Freeze at ${w} x ${h}(${amp}F)");
+			/**/   .disableWindowResizeMenuItem.caption = applyInlineStringVariableExtract(fmt, %[ w:dw, h:dh, amp:"&" ]);;
+		}
+		if (typeof .winResMenu != "undefined") {
+			updateRadioMenuItem(.winResMenu, /*(w == pw && h == ph) ? void :*/ w);
+			.winResMenu.enabled = !.tempZoomed && !.fullScreen;
+
+			// pxWidth/pxHeightのサイズ変更があった場合はメニューのサイズを追従
+			with (.winResMenu) if (typeof .lastWidth == "undefined" || .lastWidth != pw || .lastHeight != ph) {
+				.lastWidth  = pw;
+				.lastHeight = ph;
+				for (var i = 0, list = .children; i < list.count; i++) {
+					var item = list[i];
+					if (typeof item.scut != "undefined") {
+						var tag = getWindowResMenuItem(pw, ph, item.value, item.scut);
+						item.caption = tag.caption if (tag !== void);
+					}
+				}
+			}
+		}
+	}
+	updateFullScrZoomMenu();
+	updatePassThroughMenuItem();
+	systemUpdate("windowSize");
+}
+
+// -----------------------------
+// KAG標準メニューの更新処理
+
+function getSenderMenuItemForKAG(sender, tag, value)
+{
+	sender = %[ tag =>  value ] if (sender === void);
+	sender = %[ tag => !value ] if (typeof sender.checkitem != "undefined") ; // kagをだます
+	return sender;
+}
+
+function setAllSkip(sender, ignoreUpdate)
+{
+	var get = (typeof kag._allskip != "undefined" ?
+			   function { return _allskip; } :
+			   function { return  allskip; } ) incontextof kag;
+	sender = getSenderMenuItemForKAG(sender, "skip", get());
+	kag.onAllSkipMenuItemClick(sender);
+	var as = get();
+	updateRadioMenuItem("allskipCheckMenuItem", as, "checkitem");
+	updateRadioMenuItem("allskipMenu",          as, "skip");
+	if (!ignoreUpdate) {
+		systemUpdate("allSkip");
+		kag.setMenuAccessibleAll();
+	}
+}
+
+function setCancelAutoByClick(sender)
+{
+	sender = getSenderMenuItemForKAG(sender, "cancel", kag.cancelAutoWhenClick);
+	kag.onCancelAutoWhenClickMenuItemClick(sender);
+	var ca = kag.cancelAutoWhenClick;
+	updateRadioMenuItem("cancelAutoByClickMenuItem", ca, "checkitem");
+	systemUpdate("cancelAutoByClick");
+}
+
+function setTextSpeed(sender)
+{
+	kag.onChSpeedMenuItemClick(sender);
+	systemUpdate("textSpeed");
+}
+
+function setAutoSpeed(sender)
+{
+	kag.onAutoModeWaitMenuClick(sender);
+	systemUpdate("autoSpeed");
+}
+
+function setEffect(sender)
+{
+//	sender.checked = true;
+	with (kag) {
+		.noeffect = (typeof sender.noeffect != "undefined") ? sender.noeffect : !.noeffect;
+		.saveSystemVariables();
+	}
+	systemUpdate("effectSpeed");
+}
+
+function updateMenuItemCaption(kag, cap, tag) {
+	if (tag == "" || typeof kag[tag] == "undefined") return;
+	with (kag[tag]) {
+		.origCaption = .caption if (typeof .origCaption == "undefined");
+		if (cap == "") .caption = .origCaption;
+		else {
+			if (!SystemConfig.splitMenuItemShortcut || .shortcut != "" || .origCaption.indexOf("\t") > 0) {
+				var brc = .origCaption.indexOf("(");
+				var base = (brc < 0) ? .origCaption : .origCaption.substr(0, brc);
+				.caption =  base + @"(${cap})";
+			} else {
+				.caption =  .origCaption + @"\t${cap}";
+			}
+		}
+	}
+}
+var updateCaptionMenusMap = %[
+	about:	"helpAboutMenuItem",		// バージョン情報(F1)
+	save:	"storeMenu",				// セーブ(F2)
+	load:	"restoreMenu",				// ロード(F3)
+	screen:	"toggleScreenMenuItem",		// 窓表示⇔全画面 切り替え(F4)
+	backlog:"showHistoryMenuItem",		// バックログ(F5)
+	auto:	"autoModeMenuItem",			// オート(F6)
+	skip:	"skipToNextStopMenuItem",	// スキップ(F7)
+	option:	"configMenuItem",			// オプション(F8)
+	qsave:	"quickStoreMenu",			// クイックセーブ(F11)
+	qload:	"quickRestoreMenu",			// クイックロード(F12)
+
+	next:	"goNextMenuItem",			// 次の選択肢
+	prev:	"goBackMenuItem",			// 前の選択肢
+
+	vreplay:"voiceReplayMenuItem",		// 音声リプレイ
+	title:	"goToStartMenuItem",		// タイトルへ戻る
+	rclick:	"rightClickMenuItem",		// 画面表示
+	exit:	"exitMenuItem",				// 終了
+	];
+
+function KAGWindow_updateMenus(kag, cap) {
+	var ext = [];
+	ext.assign(global.updateCaptionMenusMap);
+	for (var i = 0; i < ext.count; i+=2)
+		updateMenuItemCaption(kag, cap[ext[i]], ext[i+1]);
+}
+
+
+// -----------------------------
+// メニュー項目生成
+
+function KAGWindow_createMyMenus()
+{
+	var enDbg = global.debugWindowEnabled;
+	var hasDU = hasDebugUtil, propDU = %[ enabled:hasDU ];
+
+	// 解像度メニュー一覧はリストから動的生成
+	var resMenus = [
+		%[  name:"resetWindowSizeMenuItem",     caption:"Default: Real Size(&D)", exp:onResetWindowSizeMenuItemClick,    prop:%[ shortcut:"Alt+1" ] ],
+		%[  name:"disableWindowResizeMenuItem", caption:"Fixed(&F)",             exp:onDisableWinwodResizeMenuItemClick ], "-" ];
+	if (typeof    global.windowResolutionWidthList == "Object") {
+		var res = global.windowResolutionWidthList;
+		var shortcuts = "1234567890-QWERTYUIOPZXCVBNM";
+		for (var i = 0, cnt = res.count; i < cnt; i++)
+			if (res[i] > 0) resMenus.add(getWindowResMenuItem(scWidth, scHeight, res[i], shortcuts.charAt(i)));
+	}
+	var getHotKey = enDbg ? function (arg, def) { var s = System.getArgument("-"+arg); return s != "" ? s : def; } incontextof global : function {};
+
+	
+	var fullScreenMenu;
+	if (!global.kirikiriz) {
+		fullScreenMenu = [
+			"*auto       :Automatic(&A)",
+			"nochange    :Keep Original(&O)",
+			"nearest     :Nearest Fit(&N)",
+			"proportional:Proportional(&P)",
+			];
+	} else {
+		fullScreenMenu = [
+			"*nochange    :Keep Original(&O)",
+			];
+	}
+	fullScreenMenu.push(
+		"-",
+		"*inner:Fit: Letterbox(&I)::2",
+		"outer :Fill: Hide Overflow(&C)::2",
+		"no    :None: Center(&D)::2",
+		"middle:Compromise: Fit and Fill(&M):fullScrResMiddleMenuItem:2",
+		"-",
+		%[  name:"middleZoomPercentMenuItem", caption:"Scaling(&Z)", exp:"inputMiddleZoomPercent()" ]
+	);
+
+	// サポートツール・開始メニュー配置判定
+	var helpSupport = 
+		%[  name:"helpSupportToolsMenuItem", caption:"サポートツールを起動(&S)",
+			/**/exp:"System.shellExecute('\"'+Storages.getLocalName(System.exePath+'SupportTools.exe')+'\"')",
+			/**/prop:%[         enabled: Storages.isExistentStorage(System.exePath+"SupportTools.exe") ]
+			];
+	//@if (SUPPORT_BOOTSTRAP)
+	{
+		var basePath = System.exePath, target = "BootStrap.exe", kickfile;
+		// for PlayDRM check (親フォルダが data でかつ，自身の実行ファイル名と同名のexeが存在する場合）
+		if (Storages.extractStorageName(basePath.substr(0, basePath.length-1)) == "data") {
+			if (Storages.isExistentStorage     (basePath + "../" + Storages.extractStorageName(System.exeName))) {
+				basePath = Storages.getFullPath(basePath + "../");
+				kickfile = '"'+(string(basePath + target)).escape()+'"';
+			}
+		}
+		var bootExist = Storages.isExistentStorage(basePath+target);
+		//Debug.notice("#::: bootExist", bootExist, basePath+target);
+		if (bootExist || !helpSupport.prop.enabled) with (helpSupport) {
+			.name = "helpBootStrapMenuItem";
+			.caption = "Show Boot Menu(&S)";
+			.exp = @"onBootStrapKicked(${kickfile})";
+			.prop.enabled = bootExist;
+		}
+	}
+	//@endif
+
+	createMenuFromList(this, menu, [
+
+		// -------- ファイル
+		%[  name:"systemMenu", caption:"File(&F)", children:[
+			%[  name:"storeMenu",         caption:"Save(&S)",     exp:"SystemAction._save()",  se:"menu.save" ],
+			%[  name:"restoreMenu",       caption:"Load(&L)",     exp:"SystemAction._load()",  se:"menu.load" ],
+			%[  name:"quickStoreMenu",    caption:"Quick Save(&W)", exp:"SystemAction._qsave()", se:"menu.qsave" ],
+			%[  name:"quickRestoreMenu",  caption:"Quick Load(&Q)", exp:"SystemAction._qload()", se:"menu.qload" ],
+			"-",
+			%[  name:"goToStartMenuItem", caption:"Return to Title(&T)",   exp:"SystemAction._title()",  se:"menu.title" ],
+			/* 未使用 */%[  name:"rightClickMenuItem",caption:"画面表示1", exp:"SystemAction._rclick()", se:"menu.rclick", noadd:true ],
+			"-",
+			%[  name:"exitMenuItem",      caption:"Exit(&X)",            exp:"SystemAction._exit()",    se:"menu.exit", prop:%[ shortcut:"Alt+F4" ] ],
+			] ],
+
+		// -------- 画面
+		%[  name:"displayMenu", caption:"Display Mode(&S)", children:[
+			%[  name:"windowedMenuItem",     caption:"Windowed(&W)", group:1, exp:"SystemAction._window()",     se:"menu.window" ],
+			%[  name:"fullScreenMenuItem",   caption:"Fullscreen(&F)", group:1, exp:"SystemAction._fullscreen()", se:"menu.fullscreen" ],
+			%[  name:"toggleScreenMenuItem", caption:"Toggle Windowed/Fullscreen",     exp:"SystemAction._screen()",     se:"menu.togglescreen", prop:%[ shortcut:"Alt+Enter", visible:false ] ],
+			"-",
+			%[  name:"winResMenu", caption:"Windowed Size(&S)", children:resMenus ],
+			getSysArgRadioMenu("fullScrResMenu", "Fullscreen Res.(&R)", "fsres:fszoom", true, fullScreenMenu),
+
+			!global.kirikiriz ?
+			getSysArgRadioMenu( "dispDoubleBufferMenu", "Render Mode(&D)", "dbstyle", true, [
+				"*auto:Automatic(&A)",
+				"d3d  :Direct3D(&3)",
+				"ddraw:DirectDraw(&D)",
+				"gdi  :GDI(&G)",
+				"-",
+				getSysArgCheckMenuItem("useDoubleBufferMenuItem", "Use DI&B when not scaled", "usedb", true, "no", "no", "yes"),
+				])
+			: void
+			,
+			getSysArgRadioMenu( "multiThreadDrawMenu", "Rendering threads(&N)", "drawthread", (typeof System.drawThreadNum != "undefined"), [
+				"*1:Off: No Threading(&D)",
+				"auto:Auto: 1 per Core(&A)",
+				"-",
+				"2:2 Threads",
+				"4:4 Threads",
+				"8:8 Threads",
+				]),
+			getSysArgCheckMenuItem("smoothZoomMenuItem", "Zoom Smoothing(&T)", "smoothzoom", true, "yes"),
+			"-",
+			%[  name:"effectMenu", caption:"画面効果(&E)", noadd:true, children:[ // 未使用（チェックメニューに変更）
+				%[  name:"effectMenuItem",   caption:"ON(&S)",  group:1, exp:setEffect, prop:%[ noeffect:false ] ],
+				%[  name:"noeffectMenuItem", caption:"OFF(&N)", group:1, exp:setEffect, prop:%[ noeffect:true  ] ],
+				] ],
+			%[  name:"effectCheckMenuItem", caption:"Screen Effects(&E)",      exp:setEffect, prop:%[ toggle:true ] ],
+			getSysArgRadioMenu("fpsLimitMenu", "Maximum Framerate(&M)", "contfreq", true, [
+				"*0: Unlimited(&N)",
+				"144:1&44 FPS",
+				"120:1&20 FPS",
+				"90:&90 FPS",
+				"75:&75 FPS",
+				"60:&60 FPS",
+				"45:4&5 FPS",
+				"30:&30 FPS",
+				"15:&15 FPS",
+				]),
+			] ],
+
+		// -------- 進行制御
+		%[  name:"systemControlMenu", caption:"Controls(&M)", children:[
+			%[  name:"showHistoryMenuItem",    caption:"History(&L)",  exp:"SystemAction._backlog()", se:"menu.backlog", func:"log" ],
+			%[  name:"autoModeMenuItem",       caption:"Auto(&A)",      exp:"SystemAction._auto()",    se:"menu.auto" ],
+			%[  name:"skipToNextStopMenuItem", caption:"Skip(&S)",    exp:"SystemAction._skip()",    se:"menu.skip" ],
+@if (BACKSKIP_ENABLED)
+			%[  name:"skipToPrevStopMenuItem", caption:"Skip Back(&K)",exp:"SystemAction._backskip()", se:"menu.backskip", func:"backskip" ],
+@endif
+@if (BACKONE_ENABLED)
+			%[  name:"backOneMenuItem",        caption:"Prev. Line(&1)", exp:"SystemAction._backone()", se:"menu.backone", func:"backone" ],
+@endif
+			"-",
+@if (!PREVNEXT_AS_SCENESKIP)
+			%[  name:"goNextMenuItem",    caption:"Next Choice(&N)", exp:"SystemAction._next()",    se:"menu.next"  ],
+			%[  name:"goBackMenuItem",    caption:"Prev. Choice(&B)", exp:"SystemAction._prev()",    se:"menu.prev"  ],
+@endif
+@if (PREVNEXT_AS_SCENESKIP)
+			%[  name:"goNextMenuItem",    caption:"Next Scene(&N)", exp:"SystemAction._next()",    se:"menu.next"  ],
+			%[  name:"goBackMenuItem",    caption:"Prev. Scene(&B)", exp:"SystemAction._prev()",    se:"menu.prev"  ],
+@endif
+@if (SCENESKIP_ENABLED)
+			%[  name:"goNextScnMenuItem", caption:"Next Scene(&F)", exp:"SystemAction._nextscn()", se:"menu.nextscn", func:"nextscn" ],
+			%[  name:"goPrevScnMenuItem", caption:"Prev. Scene(&P)", exp:"SystemAction._prevscn()", se:"menu.prevscn", func:"prevscn" ],
+@endif
+			"-",
+			%[  name:"configMenuItem",         caption:"Options(&O)",  exp:"SystemAction._option()",  se:"menu.option" ],
+			%[  name:"voiceReplayMenuItem", caption:"Voice Replay(&R)",   exp:"SystemAction._vreplay()", se:"menu.vreplay",visible:false ],
+			] ],
+
+		// -------- 文字表示
+		%[  name:"characterMenu", caption:"Text Display(&C)", children:[
+			%[  name:"chSpeedMenu", caption:"Text Speed(&C)", children:[
+				%[  name:"chSlowMenuItem",   caption:"Slow(&S)", group:1, exp:setTextSpeed, prop:%[ speed:chSpeeds.slow   ] ],
+				%[  name:"chNormalMenuItem", caption:"Mid(&N)", group:1, exp:setTextSpeed, prop:%[ speed:chSpeeds.normal ] ],
+				%[  name:"chFastMenuItem",   caption:"Fast(&F)", group:1, exp:setTextSpeed, prop:%[ speed:chSpeeds.fast   ] ],
+				//"-",
+				/* 未使用 */%[  noadd:true, name:"chNonStopToPageBreakItem", caption:"ページ末まで一気に(&P)", exp:onChNonStopToPageBreakItemClick ],
+				] ],
+			%[  name:"autoModeWaitMenu", caption:"Auto Wait(&D)", children:[
+				%[  name:"autoModeFastMenuItem",   caption:"Short(&1)",     group:1, exp:setAutoSpeed, prop:%[ wait:autoModePageWaits.fast,   lwait:autoModeLineWaits.fast   ] ],
+				%[  name:"autoModeFasterMenuItem", caption:"Mid-Short(&2)", group:1, exp:setAutoSpeed, prop:%[ wait:autoModePageWaits.faster, lwait:autoModeLineWaits.faster ] ],
+				%[  name:"autoModeMediumMenuItem", caption:"Mid(&3)",     group:1, exp:setAutoSpeed, prop:%[ wait:autoModePageWaits.medium, lwait:autoModeLineWaits.medium ] ],
+				%[  name:"autoModeSlowerMenuItem", caption:"Mid-Long(&4)", group:1, exp:setAutoSpeed, prop:%[ wait:autoModePageWaits.slower, lwait:autoModeLineWaits.slower ] ],
+				%[  name:"autoModeSlowMenuItem",   caption:"Long(&5)",     group:1, exp:setAutoSpeed, prop:%[ wait:autoModePageWaits.slow,   lwait:autoModeLineWaits.slow   ] ],
+				] ],
+			"-",
+			%[  name:"cancelAutoByClickMenuItem", caption:"Stop Auto on Click(&K)", exp:setCancelAutoByClick, prop:%[ checkitem:true ] ],
+			// 未使用
+			%[  noadd:true, name:"allskipMenu", caption:"未読台詞スキップ(&I)", children:[
+				%[  name:"allskipMenuItem",   caption:"ON(&S)",  group:1, exp:setAllSkip, prop:%[ skip:true  ] ],
+				%[  name:"noallskipMenuItem", caption:"OFF(&N)", group:1, exp:setAllSkip, prop:%[ skip:false ] ],
+				] ],
+			// 上記のチェックアイテム版
+			%[  name:"allskipCheckMenuItem", caption:"Skip Unread(&I)", exp:setAllSkip, prop:%[ checked:allskip, checkitem:true ] ],
+			// 未使用
+			%[  noadd:true, name:"ch2ndSpeedMenu", caption:"一度読んだところは(&I)", children:[
+				%[  name:"ch2ndNoWaitMenuItem",   caption:"ノーウェイト(&W)", group:1, exp:onCh2ndSpeedMenuItemClick, prop:%[ speed:0               ] ],
+				%[  name:"ch2ndFastMenuItem",     caption:"高速(&F)",         group:1, exp:onCh2ndSpeedMenuItemClick, prop:%[ speed:chSpeeds.fast   ] ],
+				%[  name:"ch2ndNormalMenuItem",   caption:"普通(&N)",         group:1, exp:onCh2ndSpeedMenuItemClick, prop:%[ speed:chSpeeds.normal ] ],
+				%[  name:"ch2ndNoChangeMenuItem", caption:"変えない(&M)",     group:1, exp:onCh2ndSpeedMenuItemClick, prop:%[ speed:-1 /*変えない*/ ] ],
+				"-",
+				%[  name:"ch2ndNonStopToPageBreakItem", caption:"ページ末まで一気に(&P)", exp:onCh2ndNonStopToPageBreakItemClick ],
+				] ],
+			"-",
+			%[  name:"chAntialiasMenuItem",  caption:"Anti-Aliasing(&A)", exp:onChAntialiasMenuItemClick ],
+			%[  name:"chChangeFontMenuItem", caption:"Fonts(&F) ...",     exp:onChChangeFontMenuItem ],
+			] ],
+
+		// -------- ヘルプ
+		%[  name:"helpMenu", caption:"Help(&H)", children:[
+			%[  name:"helpIndexMenuItem", caption:"Contents(&I) ...", exp:onHelpIndexMenuItemClick, noadd:!Storages.isExistentStorage("brows_help.ks") ],
+			helpSupport, // サポートツール・開始メニュー配置（※上の方で定義済み）
+			%[  name:"troubleShootMenu", caption:"Troubleshooting Tools(&T)", children:[
+				getSysArgRadioMenu( "videoOverlayModeMenu", "Video Mode", "vomstyle", true, [
+					"*auto  :Automatic",
+					"overlay:Overlay",
+					"mixer  :Mixer",
+					"layer  :Layer",
+					checkWindowsVersion.canMFEVR ? "mfevr:Media Foundation": void ]),
+				!global.kirikiriz ? getSysArgRadioMenu( "pseudoFullScreenModeMenu", "Windowed Fullscreen", "fullscreenmode", true, [
+					"*auto      :Automatic",
+					"primaryonly:Primary Display",
+					"usepseudo  :Primary Switch",
+					"pseudoall  :Maximized Window",
+					]) : void,
+				!global.kirikiriz ? getSysArgCheckMenuItem("fsmethodMenuItem",          "Fullscreen Method",     "fsmethod",  true, "ddraw",  "cds",     "ddraw") : void,
+				!global.kirikiriz ? getSysArgCheckMenuItem("waitVSyncMenuItem",         "Wait for V-Sync",       "waitvsync", true, "no") : void,
+				!global.kirikiriz ? "-" : void,
+
+				getSysArgCheckMenuItem("disableCursorMoveMenuItem", "Disable Automatic Mouse Movement", "curmove",   true, "yes",    "no",      "yes"),
+				getSysArgCheckMenuItem("mouseWheelMsgMenuItem",     "Mouse Wheel Method", "wheel",     true, "dinput", "message", "dinput"),
+				getSysArgCheckMenuItem("disableJoypadMenuItem",     "Disable Gamepad",         "joypad",    true, "dinput", "no",      "dinput"),
+				%[  name:"bindGamePadButtonMenuItem", caption:      "Remap Gamepad Controls", exp:"bindGamePadButton()" ],
+				"-",
+				getSysArgCheckMenuItem("lowMemoryPerfMenuItem",     "Memory Saver Mode",             "memusage",  true, "normal", "low",     "normal"),
+				] ],
+			"-",
+			%[  name:"helpAboutMenuItem", caption:"Version Info(&A)", group:1, exp:"SystemAction._about()" ],
+			] ],
+
+		// -------- デバッグ
+		%[  name:"debugMenu", caption:"デバッグ(&D)", prop:%[ enabled:enDbg ], children:[
+			%[  name:"loadScenarioMenuItem",     caption:"シナリオの読込み(&L)", exp:Storages.isExistentStorage("!scnlist.txt") && typeof global.MenuItem.popupEx == "Object" && hasDU ?
+				/**/ "execPopup('!scnlist.txt')" :                                         onExecDialogMenuItemClick ],                       // Shift+F8
+			%[  name:"reloadScenarioMenuItem",   caption:"シナリオの再読込み(&R)",         exp:onReloadScenarioMenuItemClick ],               // Shift+F7
+			%[  name:"restartScenarioMenuItem",  caption:"現在のシナリオを先頭から(&S)",   exp:"skipToScenarioLine(0)",        prop:propDU ], // Shift+F6
+			%[  name:"jumpPrev100LineScenarioMenuItem", caption:"現在のシナリオの100行前へ", exp:"skipToScenarioLine(-100)",   prop:propDU ], // Shift+F10
+			%[  name:"jumpLineScenarioMenuItem", caption:"現在のシナリオの指定行数へ(&J)", exp:"skipToScenarioLine()",         prop:propDU ], // Alt+G
+			%[  name:"editCurtScenarioMenuItem", caption:"現在のシナリオを編集(&E)",       exp:"editCurrentLineScenario()",    prop:propDU ], // Alt+E
+			%[  name:"backToAutoLabelStoreMenuItem", caption:"直前に戻る", /*\tShift+BS",*/       exp:onBackToAutoLabelStoreMenuItemClick ],  // Shift+BkSp
+			%[  name:"selectAutoLabelStoreMenuItem", caption:"直前を選択して戻る", /*\tAlt+BS",*/ exp:"selectAutoLabelStore()", prop:propDU ],// Alt+BkSp
+			%[  name:"scenarioConvertModeMenu",  caption:"シナリオコンバートモード", enabled:(typeof global.KAGWorldPlugin == "Object" && typeof global.world_object == "Object"), children:[
+				%[  name:"convertModeMenuItem",  caption:"コンバートモード有効",   exp:function { world_object.togglePlayerExecMode(); } incontextof global ],
+				"-",
+				%[  caption:"全シナリオコンバート",   exp:function { kag.process("loadinit.ks","*convert",,true); if (!world_object.convertAll(false)) kag.goToStart(); } incontextof global ],
+				%[  caption:"クリーン＆全コンバート", exp:function { kag.process("loadinit.ks","*convert",,true); if (!world_object.convertAll(true))  kag.goToStart(); } incontextof global ],
+				%[  caption:"クリーン",               exp:function { kag.bgm.stop();                                   world_object.convertClean();    kag.goToStart(); } incontextof global ],
+				"-",
+				%[  name:"convertModeReadOnlyMenuItem", caption:"DB読み取り専用（変換無効）", exp:function { world_object.togglePlayerReadOnly();  } incontextof global ],
+				%[  name:"convertModeCompressMenuItem", caption:"DB圧縮", exp:function { world_object.togglePlayerCompress();  } incontextof global ],
+				"-",
+				%[  name:"convertModeReverseDataMenuItem", caption:"逆順データ", exp:function { world_object.togglePlayerReverseData();  } incontextof global ],
+				%[  name:"convertModeLangLogMenuItem", caption:"言語ログ出力", exp:function { world_object.togglePlayerLangLog();  } incontextof global ],
+				%[  name:"convertModeImageConvertMenuItem", caption:"画像変換", exp:function { world_object.togglePlayerImageConvert();  } incontextof global ],
+				] ],
+			"-",
+			%[  name:"debugFlagEditMenuItem",  caption:"フラグ参照・編集(&F)",   exp:"startFlagEdit()", prop:propDU ], // Shift+F9
+			%[  name:"allSeenMenuItem",        caption:"鑑賞モード全O&N", exp:
+				function (sender) { tf.allseen = !tf.allseen; sender.checked = tf.allseen; kag.goToStart(); } ],
+			"-",
+			%[  name:"systemResetMenuItem",    caption:"システムリセット(マクロ再読)", prop:propDU, // Shift+DEL
+				/**/exp:function() { resetAll(); terminator.invoke(); process("first.ks", "*reset",, true); } incontextof this ],
+			%[  name:"systemRestartMenuItem",  caption:"システム再起動\tALT+DEL", exp:"systemReboot()", //prop:%[ shortcut:(enDbg?"Alt+DEL":void) ],
+				/**/enabled:(typeof System.waitForAppLock == "Object") || Storages.isExistentStorage(System.exePath+"tools/ReStarter.exe") ],
+			"-",
+			%[  name:"bugReportMenuItem", caption:"バグレポート作成(&B)", exp:"editBugReport()", prop:propDU ], // Alt+B
+			%[  name:"debugWinMenuItem",  caption:"デバッグ情報表示(&I)", exp:onDebugWinMenuItemClick ], // Shift+F5
+			%[  name:"debugLevelMenu",    caption:"デバッグログレベル(&D)", children:[
+				%[  name:"debugLevelNoneMenuItem",    caption:"なし(&N)",     group:2, exp:onDebugLevelNoneMenuItemClick ],
+				%[  name:"debugLevelSimpleMenuItem",  caption:"シンプル(&S)", group:2, exp:onDebugLevelSimpleMenuItemClick ],
+				%[  name:"debugLevelVerboseMenuItem", caption:"詳細(&D)",     group:2, exp:onDebugLevelVerboseMenuItemClick ],
+				"-",
+				%[  name:"chDebugLogMenuItem",        caption:"KAGEXログウィンドウ(&X)",        exp:onChDebugLogMenuItemClick ], // Alt+F5
+				getSysArgCheckMenuItem("debugAutoErrorLogOpenMenuItem", "KAGEXログを自動で開く(&O)", "autoerrlogopen", true, "yes"),
+				getSysArgCheckMenuItem("debugAutoErrorLogMoveMenuItem", "KAGEXログを連動移動(&M)",   "autoerrlogmove", true, "yes"),
+				"-",
+				%[  name:"debugEnvCheckerSettingMenuItem",  caption:"デバッグ情報：環境表示項目(&C)", exp:function {
+					if (hasDebugUtil) global.DebugEnvStateCheckerConfig();
+				} incontextof global ],
+				getSysArgRadioMenu("debugInfoScaleMenu", "デバッグ情報：下部サイズ", "debuginfoscale", true, [
+					"*0:自動",
+					"1:最小(12px)",
+					"1.5:普通(18px)",
+					"2:大きい(24px)",
+					]),
+				] ],
+			%[  name:"voiceSpeedMenu", caption:"ボイス速度(&V)", children:[
+				%[  name:"voiceNormalSpeedMenuItem",     caption:"通常(&N)",    group:1, exp:onVoiceSpeedMenuItemClick, prop:%[ speed:1.0 ] ],
+				%[  name:"voiceOneHalfSpeedMenuItem",    caption:"1.5倍速(&F)", group:1, exp:onVoiceSpeedMenuItemClick, prop:%[ speed:1.5 ] ],
+				%[  name:"voiceDoubleSpeedMenuItem",     caption:"2倍速(&D)",   group:1, exp:onVoiceSpeedMenuItemClick, prop:%[ speed:2.0 ] ],
+				%[  name:"voiceDoubleHalfSpeedMenuItem", caption:"2.5倍速(&E)", group:1, exp:onVoiceSpeedMenuItemClick, prop:%[ speed:2.5 ] ],
+				%[  name:"voiceTripleSpeedMenuItem",     caption:"3倍速(&T)",   group:1, exp:onVoiceSpeedMenuItemClick, prop:%[ speed:3.0 ] ],
+				] ],
+			%[  name:"debugDetailMenu",   caption:"詳細ツール(&T)", children:[
+				%[  name:"showControllerMenuItem",    caption:"コントローラ(&S)\t"+getHotKey("hkcontroller","Shift+F1"), exp:onShowContollerMenuItemClick ],
+				%[  name:"showConsoleMenuItem",       caption:"コンソール(&C)\t"  +getHotKey("hkconsole",   "Shift+F4"), exp:onShowConsoleMenuItemClick ],
+				getSysArgCheckMenuItem("restoreConsolePosMenuItem", "起動時にコンソール位置を確実に補正(&R)", "consolerepos", true, "no"),
+				getSysArgCheckMenuItem("syncroConsolePosMenuItem",  "コンソールを連動移動(&M)", "consolesyncpos", true, "no"),
+				"-",
+				%[  name:"outputDebugLogMenuItem",    caption:"KAGEXログを分類別にファイルへ出力(&O)",    exp:onOutputDebugLogMenuItemClick ],
+				%[  name:"currentVoiceNumberMenuItem",caption:"ボイス番号をクリップボードにコピー(&V)", exp:"copyCurrentVoiceToClipBoard()",  prop:propDU ], // Alt+V
+				%[  name:"curVoiceLabelEditMenuItem", caption:"現在ボイスのラベル編集(&L)", exp:"editCurrentVoiceLabel(kag.scflags.sliAutoSvnAdd)",  prop:propDU ], // Alt+L
+				%[  name:"sliAutoSvnAddMenuItem",     caption:"↑ボイスラベル編集時に自動svn追加",           flagname:"kag.scflags.sliAutoSvnAdd", prop:propDU ],
+				%[  name:"copyCurrentEnvTextMenuItem",caption:"現在の環境情報をクリップボードにコピー(&T)", exp:"copyCurrentEnvInfoToClipBoard(%[all:1,voicebase:0,chvoice:0])",  prop:propDU ], // Alt+T
+				%[  name:"captureCurrentScreenMenuItem", caption:"現在の画面をキャプチャ(&P)", exp:"captureCurrentScreen()",  prop:propDU ], // Alt+P
+				] ],
+			"-",
+			] ],
+		]);
+
+	callHook("onKAGSetupMenu", this);
+	(global.KAGWindow_createCustomMenus incontextof this)() if (typeof global.KAGWindow_createCustomMenus == "Object");
+	(global.KAGWindow_createCustomShortcut incontextof this)(enDbg) if (typeof global.KAGWindow_createCustomShortcut == "Object");
+}
+
+// -----------------------------
+// KAG標準メニューの差し替え
+
+function KAGWindow_createMenus()
+{
+	if (typeof global.SystemAction != "Object" ) {
+		global.SystemAction = this.systemActionInstance = new global.SystemActionClass(this);
+		add(systemActionInstance);
+	}
+
+	// この関数は MainWindow クラスのオブジェクトのコンテキスト上で実行されます
+
+	// メニュー項目を生成
+	(global.KAGWindow_createMyMenus incontextof this)();
+
+	// ファンクションキーを更新
+	resetCaptionFunctionKeys(this);
+
+	// SystemArgument系メニューの更新
+	if (typeof global.sysArgMenuNameList == "Object") {
+		var t= global.sysArgMenuNameList;
+		var args = [], info = global.SystemArgumentInfo;
+		for (var i = 0; i < t.count; i++) {
+			var tag = t[i], menu;
+			if (info[tag] !== void && (menu = info[tag].menu) != "" &&
+				typeof   this[menu] == "Object") {
+				args.add(this[menu]);
+			}
+		}
+		updateSysArgMenuItem(args*);
+	}
+	updateFullScrZoomMenu(fullScrResMenu);
+}
+
+// -----------------------------
+// ヘルプテキスト表示
+
+var BrowsFiles = %[ index: [ "brows_conf.ks", "brows_help.ks", "helpover.ks"  ] ];
+function openBrowsWindow(tag, name="index", w=620, h=440, parent=global.kag) {
+	if (typeof global.BrowsWindow == "undefined") {
+		KAGLoadScript("browswindow.tjs");
+	}
+	var win = new BrowsWindow(name, w, h, parent);
+	win.open(tag, BrowsFiles[ name]);
+	invalidate win;
+}
+KAGWindow.onHelpIndexMenuItemClick = function { openBrowsWindow(); } incontextof global;
+
+&System.openURL = function(url, *) {
+	if (url != "") {
+		if (kag.callHook("onSystemOpenURL", url, *)) return;
+		SystemAction._window();
+		System.shellExecute(...);
+	}
+} incontextof global;
+
+// ---------------------------------------------------------
+// 基本機能メソッド
+// ---------------------------------------------------------
+
+class loadTrigger extends AsyncTrigger {
+	var loadNumber, layer;
+	function loadTrigger() {
+		super.AsyncTrigger(this.load, "");
+		mode = atmAtIdle;
+		cached = true;
+		cancel();
+	}
+	function finalize() {
+		deleteLayer();
+		super.finalize(...);
+	}
+	function load() {
+		var reset = false;
+		switch (typeof loadNumber) {
+		case "void":    break;
+		case "Object":
+			if (loadNumber) {
+				try { recollection(loadNumber); }
+				catch (e) {
+					System.inform(e.message);
+					reset = true;
+				}
+			} else {
+				prepare() if (!layer || !layer.visible);
+				fadein(true);
+			}
+			break;
+		case "Integer":
+			prepare();
+			reset = !kag.loadBookMark(loadNumber);
+			if (!reset) fadein();
+			else deleteLayer();
+			break;
+		case "String":
+			prepare();
+			var sel = customLoadHook(loadNumber, fadein);
+			if (sel) fadein();
+			else if (sel === void) {
+				reset = true;
+				deleteLayer();
+			}
+			break;
+		default:   reset = true; break;
+		}
+		if (typeof global.SystemHook != "undefined")
+			/**/   global.SystemHook.exec("loadinit.done", loadNumber); // 直実行なので .ks のフックは実行できないことに注意
+		loadNumber = void;
+		kag.setMenuAccessibleAll();
+		kag.goToStart() if (reset);
+	}
+	function recollection(dic) {
+		var fade = SystemConfig.recollectionFadeInStart;
+		prepare() if fade;
+		kag.startRecollection(dic);
+		kag.insertTag("syshook", %[ name: "scenemode.view.start" ]) if (typeof global.SystemHook != "undefined"); // フック
+		global.startRecollectionHook() if (typeof global.startRecollectionHook == "Object");
+		if (dic.skipto != "") {
+			kag.skipToLabel(true, dic.skipto);
+			if (fade) {
+				var hook = this.onSkipToLabelStop;
+				kag.removeHook("onSkipToLabelStop", hook);
+				kag.addHook   ("onSkipToLabelStop", hook);
+			}
+		} else {
+			fadein(true) if fade;
+		}
+	}
+	function onSkipToLabelStop {
+		kag.removeHook("onSkipToLabelStop", this.onSkipToLabelStop);
+		fadein();
+	}
+	function prepare(vis) {
+		deleteLayer();
+		layer = new Layer(kag, kag.uibase);
+		with (layer) {
+			.name = "load trigger";
+			.visible = false;
+			.setImageSize(kag.exWidth, kag.exHeight);
+			.setSizeToImageSize();
+//			.fillRect(0, 0, .width, .height, 0xFF000000);
+			.type = ltOpaque;
+			if (kag.isD3D) {
+				kag.captureSnapshot(layer, kag.exWidth, kag.exHeight, false);
+			} else {
+				.piledCopy(0, 0, kag.fore.base, 0, 0, .width, .height);
+			}
+			.absolute = 10000000;
+			.hitType = htProvince;
+			if (vis) {
+				.opacity = 255;
+				.visible = true;
+			}
+		}
+	}
+	function fadein(nowait) {
+		if (layer && isvalid layer) {
+			layer.opacity = 255;
+			layer.visible = true;
+			kag.beginAction(layer, %[ opacity: %[ handler: MoveAction, start:255, value:0, time:300 ] ], onActionCompleted, nowait);
+			kag.insertFastTag("wact", %[target:layer]) if (!nowait);
+		}
+	}
+	function onActionCompleted() {
+//		kag.onActionCompleted(...);
+		deleteLayer();
+	}
+	function deleteLayer() {
+		invalidate layer if (layer !== void && isvalid layer);
+		layer = void;
+	}
+	function goBackHistory() {
+		kag.goBackHistory(false);
+		return true;
+	}
+	function goBackTitle() {
+		SystemHook.kagCurrent(%[name:"title"]); // [XXX]
+		kag.goToStart();
+		return false;
+	}
+	function endRecollection() {
+		kag.endRecollection();
+		return false;
+	}
+	function loadEmergency {
+		var resume = kag.getBookMarkFileNameBySystem("emergency");
+		var ret, err;
+		try {
+			ret = kag.loadBookMarkFromFile(resume);
+		} catch (e) {
+			ret = false;
+		}
+		if (!ret) {
+			err = GetSystemConfigItem("EmergencyRebootFailed", "復帰用データのロードに失敗しました。通常処理で起動します。");
+			ret = goBackTitle();
+		}
+		Storages_deleteFile(resume);
+		if (err != "") System.inform(err);
+		return ret;
+	}
+	var loadHooks = %[
+		/**/prev:            %[ callback:goBackHistory,   loadinit:'*noclearhistory'  ],
+		/**/title:           %[ callback:goBackTitle,     loadinit:'*gobacktitle'     ],
+		/**/endrecollection: %[ callback:endRecollection, loadinit:'*endrecollection' ],
+		/**/emergency:       %[ callback:loadEmergency,   loadinit:'*emergencyreboot' ],
+		];
+	function getLoadHookInfo(tag, param) {
+		var info = (typeof tag == "String" && tag != "" && loadHooks[tag] !== void) ? loadHooks[tag] : void;
+		if (param == "") return info ? info : %[];
+		return info ? info[param] : void;
+	}
+	function isNoclearHistory(tag) { // obsoleted
+		return getLoadHookInfo(tag, "noclearhist");
+	}
+	function getLoadInitTarget(tag) {
+		var info = getLoadHookInfo(tag);
+		return info.loadinit != "" ? info.loadinit : info.noclearhist ? '*noclearhistory' : '';
+	}
+	function customLoadHook(tag) {
+		var cb= getLoadHookInfo(tag, "callback");
+		return (cb !== void) ? cb() : void;
+	}
+	function trigger() {
+		var cb= getLoadHookInfo(loadNumber, "ontrigger");
+		if (cb && cb()) return; // for trigger block
+		return super.trigger(...);
+	}
+}
+loadTrigger.instance = new loadTrigger();
+function doLoad() { global.loadTrigger.instance.trigger(); }
+function doLoadPrepare() {
+	var inst = loadTrigger.instance;
+	inst.prepare(true);
+}
+function doLoadFadeIn() {
+	var inst = loadTrigger.instance;
+	inst.loadNumber = null;
+	inst.trigger();
+}
+function setCustomLoadHook(name, callback, loadinit, ontrigger) {
+	var inst = loadTrigger.instance;
+	inst.loadHooks[name] = %[ callback:callback, loadinit:loadinit, ontrigger:ontrigger ];
+}
+
+function loadFunction(work)
+{
+	var inst = loadTrigger.instance;
+	// 誤動作防止
+	kag.nextRecordHistory = false;
+	// 進行を止めないために必要
+	kag.closeDialog();
+	inst.loadNumber = work;
+	kag.process('loadinit.ks', inst.getLoadInitTarget(work), true, true);
+	inst.loadNumber = work;
+}
+
+function saveFunction(work)
+{
+	return kag.saveBookMark(work);
+}
+
+function qloadFunction(num)
+{
+	if (typeof num == "Integer") {
+		var data = kag.readBookMark(num, true);
+		if (!kag.isValidBookMarkData(data, true, false)) {
+			kag.callHook("onBookMarkLoadFailed", num, true);
+			return false;
+		}
+	}
+	loadFunction(...);
+	global.qsaveNotify.show("q_loaded") if (typeof global.qsaveNotify !== 'undefined');
+	return true;
+}
+
+function qsaveFunction()
+{
+	var ret = saveFunction(...);
+	global.qsaveNotify.show("q_saved")  if (ret && typeof global.qsaveNotify !== 'undefined');
+	kag.freeSnapshot();
+	if (!ret) {
+		function num(r) { return r; }
+		kag.callHook("onBookMarkSaveFailed", num(...), true);
+	}
+	return ret;
+}
+
+
+// ---------------------------------------------------------
+// キーバインド
+// ---------------------------------------------------------
+
+//        VK_? : 素の      VK_?
+// "S_" + VK_? : Shift   + VK_?
+// "C_" + VK_? : Control + VK_?
+// "A_" + VK_? : Alt     + VK_?
+// 複数同時指定の場合は SCA_ の順
+// "*"  + VK_? : モディファイア無関係で VK_?
+var kagCustomizedKeys = %[
+	// ファンクションキー機能一覧
+	VK_F1 => "about",							// F1: ヘルプ(About)
+	VK_F2 => "save",							// F2: セーブ
+	VK_F3 => "load",							// F3: ロード
+	VK_F4 => "screen",							// F4: 画面切り替え(kag.toggleScreenMenuItem.shortcut に Alt+Enter が指定してあるので上書き時は注意）
+	VK_F5 => "backlog", VK_PRIOR => "backlog",	// F5, PageUp: バックログ
+	VK_F6 => "auto",							// F6: オート
+	VK_F7 => "skip",							// F7: スキップ
+	VK_F8 => "option",							// F8: オプション画面
+	VK_F11=> "qsave",							// F11: クイックセーブ
+	VK_F12=> "qload",							// F12: クイックロード
+
+	// 吉里吉里機能キー抑制一覧
+	"*" + #'F' => "none", // 次の選択肢/未読まで進む
+	"*" + #'B' => "none", // 前に戻る
+	"*" + #'A' => "none", // オート
+	"*" + #'S' => "none", // セーブ
+	"*" + #'L' => "none", // ロード
+	"*" + #'R' => "none", // バックログ
+	"S_" + VK_UP => "none", // バックログ
+
+	"A_" + VK_LEFT  => "none", // 前のラベルへ戻る
+	"A_" + VK_RIGHT => "none", // 次のラベルへ進む
+
+	"S_" + VK_BACK => "none", // 直前に戻る
+	];
+
+// ファンクションキーに関するバインド（メニューショートカット表示用）
+var updateCaptionFunctionKeys = %[];
+function resetCaptionFunctionKeys(kag) {
+	var ucfk = global.updateCaptionFunctionKeys;
+	var kck  = global.kagCustomizedKeys;
+
+	(Dictionary.clear incontextof ucfk)();
+	if (!kag.callHook("onResetCaptionFunctionKeys", ucfk, kck)) {
+		for (var i = 0; i < 12; i++) {
+			var key = kck[VK_F1+i];
+			ucfk[key] = "F"+(i+1) if (key != "" && key != "none");
+		}
+	}
+	KAGWindow_updateMenus(kag, ucfk);
+}
+
+// キー入力の横取り
+function keyFunc(key, shift)
+{
+	var tag, mod = "";
+	mod += "S" if (shift & ssShift);
+	mod += "C" if (shift & ssCtrl);
+	mod += "A" if (shift & ssAlt);
+	mod += "_" if (mod != "");
+
+	try {
+		tag = kagCustomizedKeys[mod + key];
+		tag = kagCustomizedKeys["*" + key] if (tag == "");
+	} catch {}
+	if (tag != "") {
+		if (tag == "none") return true;
+		// タグの先頭が @ の場合はリピート有効
+		if (tag.charAt(0) == "@") tag = tag.substr(1);
+		else if (shift & ssRepeat) return true;
+
+		if (typeof SystemAction[tag] != "undefined")
+			return SystemAction[tag]([ tag, key, shift ]);
+
+		var exp = kagCustomizedKeys["!" + tag];
+		switch (typeof exp) {
+		case "Object": return exp(key, shift);
+		case "String": Scripts.eval(exp); return true;
+		}
+	}
+
+	return false;
+}
+
+// ---------------------------------------------------------
+// ボタンに文字を書く
+// ---------------------------------------------------------
+function drawButtonCaptionWithAlign(button, ox, oy, pos, caption, *)
+{
+	pos = 5 if (!pos); // default = center
+
+	// 文字のサイズを得る
+	var cw = button.font.getTextWidth( caption);
+	var ch = button.font.getTextHeight(caption);
+	var w = button.width, h = button.height;
+
+	if (     pos === 2 || pos === 5 || pos === 8) ox += (w - cw) >> 1; // h-center
+	else if (pos === 3 || pos === 6 || pos === 9) ox += (w - cw);      // right
+	if (     pos === 4 || pos === 5 || pos === 6) oy += (h - ch) >> 1; // v-center
+	else if (pos === 1 || pos === 2 || pos === 3) oy += (h - ch);      // bottom
+
+	var dt = button.drawText, max = button.imageWidth;
+	for (var n = 0; n < max; n+=w) dt(ox+n, oy, caption, *);
+}
+function drawButtonCaption(button, ox, oy, caption, *)
+{
+	return drawButtonCaptionWithAlign(button, ox, oy,, caption, *);
+}
+
+// ---------------------------------------------------------
+// Array要素をランダムに選択
+// ---------------------------------------------------------
+function getRandomSE(elm) {
+	var array = [], orig = elm.array;
+	orig = Scripts.eval(orig) if (typeof orig == "String");
+	array.assign(orig);
+	// 存在しないファイルは除外する
+	for (var i = 0; i < array.count; i++) {
+		array[i] = void if (!(Storages.isExistentStorage(array[i]+".ogg") ||
+							  Storages.isExistentStorage(array[i]+".opus") ||
+							  Storages.isExistentStorage(array[i]+".wav")));
+	}
+	array.remove(void, true);
+	if (array.count === 0) return;
+	var buf = (elm.buf !== void) ? +elm.buf : kag.numSEBuffers;
+	var rnd = array[(int)(defaultRandomGenerator.random() * array.count)];
+	return %[ buf: buf, storage: rnd ];
+}
+function playRandomSE(elm) {
+//	dm("playRandomSE", rnd, array.count);
+	var e = getRandomSE(elm);
+	kag.se[+e.buf].play(e) if (e !== void);
+}
+
+// Math.RandomGenerator インスタンス
+var defaultRandomGeneratorInstance = void;
+property defaultRandomGenerator { getter {
+	if (defaultRandomGeneratorInstance === void)
+		defaultRandomGeneratorInstance = new Math.RandomGenerator();
+	return defaultRandomGeneratorInstance;
+}}
+
+// ---------------------------------------------------------
+// 再帰的にDictionaryを表示
+// ---------------------------------------------------------
+
+function StructToString(dic, level = 0, add = 2) {
+	var ret = "";
+	if (typeof dic !== "Object" || !(dic instanceof "Dictionary")) return ret;
+	var items = [];
+	items.assign(dic);
+	for (var i = 0; i < items.count; i+=2) {
+		var key = items[i], val = items[i+1];
+		ret += " ".repeat(level) + key + ": ";
+		if (typeof val === "Object") {
+			if (val instanceof "Array") {
+				ret += "[ " + val.join(", ") + " ]\n";
+				continue;
+			} else if (val instanceof "Dictionary") {
+				ret += "%[\n" + StructToString(val, level + add, add);
+				ret += " ".repeat(level) + "]\n";
+				continue;
+			}
+		}
+		val = "void" if (val === void);
+		ret += val + "\n";
+	}
+	return ret;
+}
+
+
+// ---------------------------------------------------------
+// AfterInit で呼び出されるコールバックを登録
+// ---------------------------------------------------------
+
+var afterInitCallback = [], kagHookEntries = [];
+// 単純なコールバックを登録
+function addAfterInitCallback(func, kagcontext) {
+	afterInitCallback.add(%[mode:"callback", callback:func, kagcontext:kagcontext]);
+}
+// KAGのハンドラを登録する
+function addKagHandler(handle, func, kagcontext, excommand) {
+	afterInitCallback.add(%[mode:"handler", handle:handle, func:func, kagcontext:kagcontext]);
+	if (excommand !== void) EntryEnvinfoExCommand(%[ handle => excommand ]);
+}
+// kag.addHookを登録する
+function addKagHookCallback(handle, func, kagcontext) {
+	kagHookEntries.add(%[ handle:handle, func:func, kagcontext:kagcontext]);
+}
+// システムマクロ登録処理 // addKagSystemMacro("[call storage='xxxx.ks' target='*macro']", ...);
+function addKagSystemMacro(texts*) {
+	// cf. first.ks
+	SystemConfig.systemMacroTexts = [] if SystemConfig.systemMacroTexts === void;
+	SystemConfig.systemMacroTexts.push(texts*);
+}
+
+// コールバック関数のコンテキストを決定
+function getInitCallbackFunction(cb, sel, ctx) {
+	if (!cb || typeof cb != "Object") return function {};
+	var func;
+	switch (typeof sel) {
+	case "void":   func = cb; break;
+	case "Object": func = cb incontextof sel; break;
+	default:       func = +sel ? (cb incontextof ctx) : (cb incontextof global); break;
+	}
+	return func;
+}
+// kagのフックを登録する
+function KAGWindow_config_override() {
+	for (var i = 0, cnt = kagHookEntries.count; i < cnt; i++)
+		with (kagHookEntries[i]) addHook(.handle, getInitCallbackFunction(.func, .kagcontext, this));
+	callHook("onKAGSetupConfig", this);
+	delete global.kagHookEntries;
+	global.addKagHookCallback = function {
+		Debug.notice("addKagHookCallback(s) were expired.");
+	} incontextof global;
+}
+
+// コールバック呼び出し
+function callAfterInit() {
+	for (var i = 0, cnt = afterInitCallback.count; i < cnt; i++) {
+		with (afterInitCallback[i]) {
+			switch (.mode) {
+			case "callback": (getInitCallbackFunction(.callback, .kagcontext, kag))(); break;
+			case "handler":
+				var func = getInitCallbackFunction(.func, .kagcontext, kag);
+				kag.tagHandlers[.handle] = func;
+				if (typeof global.SceneParserAddCommand == "Object") {
+					SceneParserAddCommand[.handle] = true;
+				}
+				break;
+			}
+		}
+	}
+	delete global.afterInitCallback;
+	global.addKagHandler = global.addAfterInitCallback = function {
+		Debug.notice("AfterInitCallback(s) were expired.");
+	} incontextof global;
+}
+
+// ---------------------------------------------------------
+// excomand登録
+
+function EntryEnvinfoExCommand(elm) {
+	function _static {}
+	_static.envinfo = %[] if (typeof _static.envinfo == "undefined");
+	(Dictionary.assign incontextof _static.envinfo)(elm, false);
+	return;
+	function onLoadEnvInfo(envinfo) {
+		var ref = EntryEnvinfoExCommand._static;
+		if (typeof ref.envinfo == "Object") {
+			var m = ref.envinfo;
+			envinfo.excommands = %[] if !(envinfo.excommands instanceof "Dictionary");
+			(Dictionary.assign incontextof envinfo.excommands)(m, false);
+			dm("envinfo merged", getPrint(m)) if (kag.debugLevel >= tkdlVerbose);
+		}
+	}
+}
+addKagHookCallback("onLoadEnvInfo", EntryEnvinfoExCommand.onLoadEnvInfo, false);
+
+// ---------------------------------------------------------
+
+// resetModeChangedをrestoreFlagsのフックに登録
+addKagHookCallback("onAfterRestoreFlags", function {
+	resetModeChanged();
+}, false);
+
+// BGMを更新するタグ（同じ曲ならそのまま）
+addKagHandler("updatebgm", function(elm) {
+	var r = 0;
+	with (bgm)
+		if (.inFading || .playingStorage.toUpperCase() != elm.storage.toUpperCase()) {
+			var ref = "playbgm";
+			/**/ref = .inFading ? "fadeinbgm" : "xchgbgm" if (elm.exchange);
+			dm("updatebgm", ref);
+			if (typeof tagHandlers[ref] == "Object") r = tagHandlers[ref](...);
+		}
+	if (elm.sflag && elm.storage != "") {
+		sflags["bgm_"+(elm.storage.toUpperCase())] = true;
+	}
+	return r;
+}, true);
+
+// 高速スキップ用
+addKagHandler("fastskip", function(elm) {
+	if (skipNoDisp && elm !== void) with (elm) {
+		var label = .target, storage = (.storage != "") ? .storage : conductor.curStorage;
+		if (label == "") throw new Exception("fastskip: ラベルを指定してください");
+		label = label.substring(1) if (label.charAt(0) == "*");
+		with (Storages) storage = .chopStorageExt(.extractStorageName(storage));
+		var flag = @"trail_${storage}_${label}";
+		if (sflags[flag]) return tagHandlers.next(elm);
+	}
+	return 0;
+}, true);
+
+// 画像キャッシュ file=*, file1=*, file2=* ... １からの連続番号で有効
+addKagHandler("touch", function(elm) {
+	if (elm === void || skipNoDisp) return 0;
+	var list = [];
+	list.add(elm.file) if (elm.file != "");
+	for (var file, i=1; (file = elm["file"+i]) != ""; i++) list.add(file);
+	System.touchImages(list, +elm.limit, +elm.timeout) if (list.count > 0);
+	return 0;
+}, true);
+
+var messageWindowOptions = %[];
+// メッセージウィンドウをロードするタグ
+addKagHandler("meswinload", function(elmov) {
+	var elm = %[];
+	with (global) {
+		(.Dictionary.assign incontextof elm)(.messageWindowOptions, true);
+		(.Dictionary.assign incontextof elm)(elmov, false) if (elmov !== void);
+		var sysuiload = tagHandlers.sysuiload;
+		if (elm.page != "both") sysuiload(elm);
+		else {
+			elm.page  = "fore"; sysuiload(elm);
+			elm.page  = "back"; sysuiload(elm);
+		}
+		.resetModeChanged();
+	}
+	kag.setMenuAccessibleAll();
+	return 0;
+}, true);
+// メッセージウィンドウのデフォルトオプションを設定
+addKagHandler("meswinopt", function(elm) {
+	with (global) (.Dictionary.assign incontextof .messageWindowOptions)(elm, true);
+	// apply設定で事前に設定できるものはしておく
+	if (elm.apply) {
+		var opt = %[];
+		(Dictionary.assign incontextof opt)(messageWindowOptions);
+		delete opt.storage; // ui-storage
+		delete opt.page;
+		if (opt.layer != "") {
+			var position = tagHandlers.position;
+			opt.page = "fore"; position(opt);
+			opt.page = "back"; position(opt);
+		}
+	}
+	return 0;
+}, true);
+// loadfadeinコール用
+addKagHandler("loadfadein", function(elm) {
+	if (elm && elm.prepare) doLoadPrepare();
+	else doLoadFadeIn();
+	return 0;
+}, false, COMMAND_SYNC);
+
+addAfterInitCallback(function() {
+	with (kag) {
+		// ウィンドウサイズのメニューにチェックを入れる
+		if (typeof .winResMenu != "undefined") {
+			var menu = .winResMenu;
+			updateWindowResMenu(menu);
+			menu.enabled = .windowedMenuItem.checked;
+
+			// パススルーメニューを更新する
+			setDelayedTrigger("updatePassThroughMenuItem", function() {
+				updatePassThroughMenuItem(-1);
+			} incontextof global, 800);
+			updatePassThroughMenuItem(1);
+		}
+		if (typeof .disableWindowResizeMenuItem != "undefined") {
+			/**/   .disableWindowResizeMenuItem.visible = (typeof .registerExEvent != "undefined");
+		}
+		if (typeof .cancelAutoByClickMenuItem != "undefined")
+			/**/   .cancelAutoByClickMenuItem.checked = .cancelAutoWhenClick;
+
+		if (!global.SystemConfig.disableTroubleShootMenuFlatten) {
+			var cnt = .videoOverlayModeMenu.children.count;
+			resetSysArgRadioMenuParent("troubleShootMenu", "vomstyle");
+			if (!global.kirikiriz) {
+				resetSysArgRadioMenuParent("troubleShootMenu", "fullscreenmode", cnt+1);
+			}
+		}
+		// 初期状態はIME無効(要WindowEx.dll)
+		if (typeof .resetImeContext == "Object" && (SystemConfig.haveEditLayerManager || typeof global.EditLayer.Manager == "Object")) // [XXX] cf. EditLayer.tjs
+			/**/   .resetImeContext(false);
+
+		// 画面効果メニューにチェックを入れる
+		.updateEffectButton();
+
+		// 未読スキップチェック
+		setAllSkip();
+
+		// セーブ・ロード機能制限
+		.origCanStore   = .canStore;
+		.origCanRestore = .canRestore;
+		.canStore   = function() { return origCanStore()   && !inSystemMenu(this); } incontextof kag;
+		.canRestore = function() { return origCanRestore() && !inSystemMenu(this); } incontextof kag;
+
+		{ // セーブロード失敗通知ダイアログ表示処理
+			var dlg = SystemConfig.bookMarkSaveLoadFailedDialog;
+			if (dlg !== void) {
+				var failedhook = function (num, isquick) {
+					const dlg = this[0], issave = this[1];
+					const tag = (isquick ? "q":"") + (issave ? "save" : "load");
+					if (dlg instanceof "Class") {
+						//dm("failedhook.DialogLayer", num, isquick);
+						// 直接生成
+						var instance = new dlg(kag, kag.uibase, tag);
+						instance.open();
+					} else if (dlg instanceof "Dictionary") {
+						//dm("failedhook.Dict", num, isquick);
+						// 通常ダイアログ
+						var text = dlg[tag];
+						if (text != "") askYesNo(text, "エラー");
+					} else if (dlg instanceof "Function") {
+						//dm("failedhook.Func", num, isquick);
+						// カスタムフック
+						dlg(tag, num);
+					}
+				};
+				.addHook("onBookMarkSaveFailed", failedhook incontextof [ dlg, true  ]);
+				.addHook("onBookMarkLoadFailed", failedhook incontextof [ dlg, false ]);
+			}
+		}
+
+		// SystemConfig.disableDisplayMenuInMoviePlaying = true の時
+		// ムービー再生時は画面設定を変更できない
+		.onMovieStatusChanged = function(state, id) {
+			if (global.SystemConfig.disableDisplayMenuInMoviePlaying) {
+				if(typeof this.displayMenu != "undefined")
+					this.displayMenu.enabled = !this.isMoviePlaying();
+			}
+			callHook("onMovieStatusChanged", state, id);
+		} incontextof kag;
+
+		// video タグの乗っ取り : volume のデフォルト値を bgmvolume にする
+		/* Movie.tjs で対応するようにしたので不要になった
+		.origVideoTagHandler = .tagHandlers.video;
+		.tagHandlers.video = function(elm) {
+			if (typeof elm.volume == "undefined" && !elm.noautovolume)
+				elm.volume = (bgmenable && waveenable ? (bgmvolume * wavevolume / 100) : 0);
+			return origVideoTagHandler(elm);
+		} incontextof kag;
+		  */
+
+		// 終了後サウンド再生処理
+		// サウンドがなりおわるまで終了遅延させる
+		.onCloseYes = function() {
+			callHook("onCloseYes");
+			var chk = SystemConfig.checkJumpEndKsOnClose;
+			if (chk === void) chk = (seenable && sevolume > 0);
+			else if (typeof chk == "Object") chk = chk(this);
+			if (chk) {
+				askOnClose = false; // 再度聞いてこないようにする
+				process("end.ks");
+			} else {
+				shutdown();
+			}
+		} incontextof kag;
+
+		// キーボードフックを登録
+		.keyDownHook.add(keyFunc);
+
+		// スクリーン変更後処理を登録
+		setDelayedTrigger("resetScreen", resetScreen);
+		.addHook("afterChangeScreenMode", function {
+			try {
+				invokeDelayedTrigger("resetScreen");
+//				systemUpdate("fullscreen");
+				updatePassThroughMenuItem();
+			} catch {}
+		} incontextof global);
+
+		// 画面モード変更フック
+		.addHook("onDisplayChangedHook", global.onDisplayChangedHook);
+
+		// リサイズフック処理を登録
+		.addHook("onWindowResizeHook", global.onWindowResizeHook);
+
+		// ロード時処理
+		.addHook("onBeforeRestoreFlags", global.terminator.invoke);
+
+		// システムセーブエラー時
+		.addHook("onSaveSystemVariablesFailed", function {
+			try { return loadExMenuInterface() ? global.onSaveSystemVariablesFailed(...) : void; } catch {}
+		} incontextof global);
+
+		// フォントフェイス変更
+		.addHook("onSetMessageLayerUserFont", function { try { systemUpdate("fontSelect"); } catch {} } incontextof global);
+
+		// 終了確認時にunminimize
+		.addHook("onCloseQuery", function {
+			try {
+				if (isvalid this && currentDialog === void &&
+					_minimized && typeof this.showRestore == "Object" &&
+					!SystemConfig.noRestoreMinizeOnClose)
+				{
+					showRestore();
+				}
+			} catch {}
+		} incontextof kag);
+
+		// jumpタグに警告
+		.addHook("onConductorJump", function (elm) {
+			if (!usingExtraConductor) {
+				if (inGameState(this) && !elm.ignorewarn) {
+					if (SystemConfig.enableJumpTagHack) { // 強制でjumpをnext相当の機能に置き換える
+						tagHandlers.next(elm);
+						return true;
+					}
+					errorCmd("既読情報を正しく保存するためにjumpではなくnextタグを使用してください");
+				}
+				if (typeof this.skipToLineStop != "undefined" &&
+					/**/   this.skipToLineStop !== void) return true; // デバッグスキップ中はjumpを無効
+			}
+		} incontextof kag);
+
+		.addHook("onHelpAboutMenuItemClicked", function {
+			if (aboutDialogConfig) with (aboutDialogConfig) {
+				if (.autosize > 0 && .storage != "") {
+					var image = getExistImageName(.storage);
+					if (image != "") {
+						var temp = new Layer(this, temporaryLayer);
+						try {
+							temp.loadImages(image);
+							aboutWidth  = temp.imageWidth;
+							aboutHeight = temp.imageHeight;
+						} catch {}
+						invalidate temp;
+					}
+					.autosize = -1;
+				}
+			}
+		} incontextof kag);
+		
+		if (!inXP3archivePacked) {
+			// アイコン設定
+			try {
+				if (typeof global.ENV_IconFile == "String" && global.ENV_IconFile != "" &&
+					Storages.isExistentStorage(System.exePath+global.ENV_IconFile) && typeof .setWindowIcon == "Object") {
+					var file =                 System.exePath+global.ENV_IconFile;
+					.setWindowIcon(file, true) if (!(typeof   Storages.getMD5HashString == "Object" &&
+													 ((string)Storages.getMD5HashString(file)).toLowerCase()
+													 /**/== "078918631a0f72bd1143de4978e7c370")); // default icon MD5
+				}
+			} catch {}
+		}
+
+		// デバッグ時のみ有効
+		if (debugWindowEnabled) {
+			// 外部制御フック
+			.addHook("onMessageReceivedHook", function(mes) {
+				if (SystemConfig.stopSkipOnMessageReceived) {
+					SystemConfig.stopSkipOnMessageReceived = false;
+					kag.cancelSkip();
+				}
+				debugMessageReceived(mes.split("|"));
+			} incontextof global);
+			if (System.getArgument("-sendmessage") != "") {
+				SystemConfig.stopSkipOnMessageReceived = true;
+				SystemHook.add("first.init", function { skipToStop(); } incontextof kag);
+			}
+			// ALT+DEL再起動時に強制でイベント停止を解除・再起動メニューをクリック
+			if (kag.exEventEnabled) {
+				var msg = .WM_SYSKEYDOWN = global.Window.getNotificationNum("SYSKEYDOWN");
+				.setMessageHook(true, msg);
+				.addHook("onWindowsMessageHook", function (msg, wp, lp) {
+					if (msg == WM_SYSKEYDOWN && wp == VK_DELETE) {
+						System.eventDisabled = false;
+						runOnceDelayedTrigger(function {
+							if (isvalid this) menuItemClickByKey("systemRestartMenuItem");
+						} incontextof this);
+						return true;
+					}
+				} incontextof kag);
+			}
+			// デバッグシナリオ開始でセーブ無効解除
+			SystemHook.add("execdialog.start", function {
+				tempDisableStore(%[]);
+				try {
+					// [XXX] 回避フラグ
+					if (!tf.noresetonexec) with (tagHandlers) {
+						.syscover(%[ visible:false ]);
+						.stopbgm(%[]);
+						.stopse (%[ buf:"all" ]);
+					} else {
+						delete tf.noresetonexec;
+					}
+				} catch {} } incontextof kag);
+			// 自動ログオープン
+			.addHook("onErrorLineHook", function(target, msg, filename, line) {
+				entryErrorLogWithTimeStamp(msg, filename, line);
+				if (!isvalid this || System.getArgument("-autoerrlogopen") == "no" || target === void ||
+					logMode || typeof this.chDebugLogMenuItem != "Object") return;
+				onChDebugLogMenuItemClick( chDebugLogMenuItem);
+			} incontextof kag);
+			// 自動ログ移動
+			.addHook("onWindowResizeHook", function {
+				if (!isvalid this || !logMode || logPad === void) return;
+				initLogPad(true, true) if (System.getArgument("-autoerrlogmove") != "no");
+			} incontextof kag);
+			.addHook("onChDebugLogMenuItemChanged", function (en) {
+				if (typeof this.debugAutoErrorLogMoveMenuItem == "Object") 
+					/**/        debugAutoErrorLogMoveMenuItem.enabled = en;
+			} incontextof kag);
+			.callHook("onChDebugLogMenuItemChanged", .logMode);
+			//autoLabelStore用
+			.addHook("onAutoLabelStoreHook", function (dic) {
+				try { if (dic.text == "") dic.text = historyLayer.currentText; } catch {}
+			} incontextof kag);
+			.addHook("disableAutoLabelStore", function {
+				try { if (!inGameState(this) || (currentStorage == "start.ks" && !world_object.playerWorking)) return true; } catch {}
+			} incontextof kag);
+			.addHook("onModeChangeHook", function {
+				try { selectAutoLabelStoreMenuItem.enabled = backToAutoLabelStoreMenuItem.enabled; } catch {}
+			} incontextof kag);
+			.addHook("onMoveSizeEndHook", function(win, old) {
+				if (System.getArgument("-consolesyncpos") != "yes") return;
+				var rect = getWindowRect();
+				if (rect === void || old === void || old.window === void) return;
+				var ox, oy;
+				with (old.window) ox = rect.x-.x, oy = rect.y-.y;
+				if (ox != 0 || oy != 0 ) with (Debug.console) {
+					var rect = (typeof .getRect == "Object") ? .getRect() : void;
+					if (rect !== void) .setPos(rect.x+ox, rect.y+oy);
+				}
+			} incontextof kag);
+			// envStateChecker
+			.addHook("onDebugWinVisibleChanged", function (vis) {
+				global.SetDebugEnvStateCheckerVisible(vis) if (hasDebugUtil);
+			} incontextof global);
+			if (._debugwin !== void && ._debugwin.visible && hasDebugUtil) {
+				global.SetDebugEnvStateCheckerVisible(true);
+			}
+			// 保存ラベル有無チェック
+			.stableHandlers.add(function {
+				if (!usingExtraConductor && inGameState(this)) {
+					if (typeof global.world_object == "Object" &&
+						/**/   global.world_object.env.transMode) errorCmd("begintrans/endtrans間でクリック待ちになりました");
+					if (prevSkipMode !== void) {
+						errorCmd("beginskip/endskip間でクリック待ちになりました");
+						cancelSkip();
+					}
+					var esn  = Storages.extractStorageName;
+					var last = storeLabelPassedLastStorage;
+					var cur  = ((string)conductor.curStorage).toLowerCase();
+					if (cur != "" && !inSystemMenuStorages[cur] &&
+						((last == "") || (esn(last).toLowerCase() != esn(cur)))) {
+						if (typeof global.checkScenarioLabelOnStable != "Object" ||
+							/**/  !global.checkScenarioLabelOnStable(cur, last)) {
+							errorCmd("保存可能なラベル指定がないシナリオで停止状態になりました");
+							storeLabelPassedLastStorage = cur; // 二度目は出さない [XXX]
+						}
+					}
+				}
+			} incontextof kag);
+
+			// エンジンバージョン表示
+			if (!SystemConfig.disableShowDebugBuildVersionMenu && typeof global.MenuItem == "Object") {
+				var kz      = (typeof global.kirikiriz   != "undefined" && kirikiriz);
+				var devmode = (typeof global.developMode != "undefined" && developMode);
+				var debug   = (System.getArgument("-debug") == "yes");
+				var packed  = inXP3archivePacked;
+				var tag = kz ? "[KZ]":"(k2)";
+				if (debug) tag += "/d";
+				tag += ", ";
+				var ddev = typeof kag.getDrawDeviceName == "Object" ? kag.getDrawDeviceName() : void;
+				if (ddev == "PassThrough" || ddev == "Basic") ddev = "Std";
+				else if (ddev == "Default") ddev = "Def";
+				if (typeof kag.d3dMode != "undefined" && (kag.d3dMode || kag.d3dMotion)) {
+					tag += ddev+"/" if (ddev != "");
+					tag += kag.d3dMode ? "D, " : "M, ";
+				} else if (ddev != "") tag += ddev+", ";
+				tag += devmode ? "DevelopMode" : packed ? "Packed" : "Normal";
+				if (Storages.isExistentStorage("currev.ini")) tag += GetRevisionString("Rev%s");
+				if (typeof Debug.EngineRev == "Object") try {
+					tag += ", EngineRev"+(Debug.EngineRev[0].split(" "))[1];
+				} catch {}
+				var children;
+				if (!packed) {
+					var engine = kz?'kirikiri2':'KirikiriZ';
+					var exe    = kz?'krkr.eXe' :'krkrZ.exe';
+					var candev = devmode || (typeof global.getToolsPath == "Object" && Storages.isExistentStorage(getToolsPath("engine/system/Initialize.tjs")));
+					var devtag = devmode ? '.undev' : '.dev';
+					var dbgtag = debug   ? '.undbg' : '.dbg';
+					children = [
+						%[ caption:"&Reboot Menu",  exp:"DebugBuildReboot()" ],
+						"-",
+						%[ caption:@"switch ${engine} \&Engine",  exp:@"DebugBuildReboot('${exe}')", prop:%[ enabled:Storages.isExistentStorage(System.exePath+exe) ] ],
+						%[ caption:(devmode?"disable":"enable") + " \&DevelpMode",    exp:@"DebugBuildReboot('${devtag}')", prop:%[ enabled:candev ] ],
+						%[ caption:(debug?"disable":"enable") + " \&TJS debug",       exp:@"DebugBuildReboot('${dbgtag}')" ],
+						"-",
+						%[ caption:"disable &all Debug tools", exp:"DebugBuildReboot('.nodbg')" ],
+						];
+				}
+				var elm = %[ caption:tag, enabled:!packed, children:children ];
+				kag.callHook("onShowDebugBuildVersionMenu", elm);
+				with (elm) CreateVersionInfoMenuItem(.caption, .enabled, .children);
+			}
+			// KAGAutoFlagMenuItemのチェックを更新
+			if (typeof global.KAGAutoFlagMenuItem == "Object") {
+				/**/          KAGAutoFlagMenuItem.UpdateAll();
+			}
+		} else if (!SystemConfig.disableShowBuildVersionMenu && typeof global.MenuItem == "Object") {
+			SystemHook.add("first.init", function {
+				with (aboutDialogConfig) {
+					var ver = (string)GetRevisionString.version;
+					var fmt = .vermenufmt;
+					var cut = .vermenucut, idx;
+					if (cut != "" && (idx = ver.indexOf(cut)) >= 0) ver = ver.substr(0,idx).trim();
+					if (ver != "") CreateVersionInfoMenuItem(applyInlineStringVariableExtract(fmt, %[ ver:ver ]));
+				}
+			} incontextof global);
+		}
+	}
+} incontextof global);
+function CreateVersionInfoMenuItem(text, enabled=false, children) {
+	if (System.getArgument("-vermenu") == "no") return;
+	with (kag) {
+		var hide = typeof .menuBarHideMenuItem == "Object" ? .menuBarHideMenuItem : null;
+		if (typeof global.kirikiriz != "undefined") {
+			if (!kirikiriz) .addHook("afterChangeScreenMode", function {
+				// [XXX] 吉里吉里2のみ：フルスクリーン切り替え後に再度メニューを右寄せ
+				try { debugVersionMenuItem.rightJustify = true; } catch {}
+			} incontextof kag);
+		}
+		var mi = .debugVersionMenuItem = new MenuItem(kag, text);
+		if (hide) .menu.insert(mi, hide.index);
+		else      .menu.add(mi);
+		mi.enabled = enabled;
+		if (children) createMenuFromList(kag, mi, children);
+		mi.rightJustify = true;
+		var hide = typeof kag.menuBarHideMenuItem == "Object" ?  kag.menuBarHideMenuItem : null;
+		if (hide) with (hide) {
+			/**/.rightJustify = false;
+			&   .rightJustify = &mi.rightJustify; // [XXX]プロパティ置き換え
+		}
+		return mi;
+	}
+}
+function DebugBuildReboot(mode) {
+	if (mode == "") return systemReboot(true);
+	var opts;
+	switch (Storages.extractStorageExt(mode).toLowerCase()) {
+	case ".exe":
+		&System.exeName = System.exePath+mode;
+		break;
+	case ".nodbg":
+		opts = "-debugwin=no";
+		// not break
+	case ".undbg":
+	case ".dbg":
+		System.setArgument("-debug", mode == ".dbg" ? "yes":"no");
+		break;
+	case ".undev":
+		Storages.deleteFile(System.exePath+"develop.txt");
+		break;
+	case ".dev":
+		[].save(System.exePath+"develop.txt");
+		break;
+	}
+	systemReboot(false, opts);
+}
+// デバッグ時はコンパイルしてロードする
+function OndemandCompiledLoad(list*) {
+	function proc(file, indev, force) {
+		if (indev || force) with (Storages) {
+			var src = "_"+file;
+			if (force < 0) file = src;
+			else if (.isExistentStorage(src)) {
+				function gettime(file) {
+					with (Storages) {
+						var path = .getPlacedPath(file);
+						return path != "" ? .getLastModifiedFileTime(path) : -1;
+					}
+				}
+				var srctime = gettime(src);
+				var dsttime = gettime(file);
+				if (force || srctime > dsttime) {
+					dm("### CompileScript", file);
+					var tmp = System.dataPath + file;
+					var dst = .getPlacedPath(file);
+					if (dst == "") dst = System.exePath + "data/main/" + file;
+					Scripts.compileStorage(src,  tmp, /*has result*/false, /*debug*/false, /*expression*/false);
+					Storages.copyFileNoNormalize(tmp, dst, false);
+					Storages.deleteFile(tmp);
+				}
+			}
+		}
+		KAGLoadScript(file);
+	}
+
+	// コンパイル条件確認
+	var compile = System.getArgument("-compile");
+	var debug = debugWindowEnabled && !inXP3archivePacked;
+	var indev = debug && (typeof global.developMode != "undefined" && developMode);
+	var force = debug ? ((compile == "yes") ? true : (compile == "direct") ? -1 : 0) : 0;
+
+	for (var i = 0, cnt = list.count; i < cnt; ++i) {
+		var file = list[i];
+		if (file != "") proc(file, indev, force);
+	}
+
+	if (debug) {
+		function compilemenu() {
+			var ver = typeof kag.debugVersionMenuItem == "Object" ?
+				/**/         kag.debugVersionMenuItem : null;
+			if (ver) createMenuFromList(kag, ver, [
+				%[  caption:"-", prop:%[ index:5 ] ],
+				%[  name:"uiCompileMenuItem", caption:"UI script force compile", exp:"systemReboot(false, '-compile=yes')",    prop:%[ index:6 ] ],
+				%[  name:"uiCompileMenuItem", caption:"UI script passthrough",   exp:"systemReboot(false, '-compile=direct')", prop:%[ index:7 ] ]
+				]);
+		}
+		addAfterInitCallback(compilemenu);
+	}
+}
+
+// aboutダイアログ用
+var aboutDialogConfig = %[
+title:		"Version Information",		// ウィンドウタイトル
+storage:	"aboutdialog",			// 背景画像
+autosize:	true,					// 自動でaboutWidth/aboutHeightを設定するかどうか
+bgcolor:	0xFFFFFF,				// 背景画像が無い場合の色
+	//								// バージョン情報表示文字に関する設定
+top:		140,					// 文字列を表示する y座標位置
+shadow:		false,					// 影ありなし
+shadowcolor:0x000000,				// 影色
+edge:		true,					// フチありなし
+edgecolor:	0xFFFFFF,				// フチ色
+color:		0x0000AA,				// フォント色
+size:		12,						// フォントサイズ
+align:		"center",				// 文字アラインメント
+face:		"NotoSansCJKBl",		// フォント名
+pitch:		0,
+
+vermenufmt: "(ver${ver})",
+vermenucut: " /",
+	// 表示フォーマット
+versionstring:"「${global.System.title}」version ${GetRevisionString.version}",
+versionfade:0, // フェード時間
+	];
+addKagHandler("aboutdlgopt", function(elm) {
+	with (global) (.Dictionary.assign incontextof .aboutDialogConfig)(elm, false);
+	return 0;
+});
+
+// リビジョン取得
+function GetRevisionString(fmt, norev = debugWindowEnabled ? "${GetRevisionString.unknown}" : void) {
+	var rev = "currev.ini", patch = "currev_patch.ini", chk = Storages.isExistentStorage;
+	if (chk(rev)) try {
+		var file = chk(patch) ? patch : rev;
+		var currev = Scripts.evalStorage(file);
+		Debug.notice("*** Revision: "+currev);
+		return fmt.sprintf(currev);
+	} catch {}
+	return (norev != "") ? fmt.sprintf(norev) : void;
+	function _static_ {}
+	property version { getter {
+		if (typeof GetRevisionString._static_.version != "undefined") {
+			return GetRevisionString._static_.version;
+		}
+		var ver;
+		if (typeof global.software_version != "undefined") {
+			/**/ver = (string)global.software_version;
+			if (ver.indexOf("${") >= 0) {
+				ver = global.software_version = applyInlineStringVariableExtract(ver, global);
+			}
+		}
+		return (GetRevisionString._static_.version = ver);
+	} }
+	property unknown { getter {
+		if (typeof GetRevisionString._static_.unknown != "undefined") {
+			return GetRevisionString._static_.unknown;
+		}
+		var rev = "XXX";
+		// [XXX]現在のリビジョンを動的に取得（デバッグ中・未パックのみ）
+		if (Storages.isExistentStorage(System.exePath+".svn/format")) try {
+			Scripts.execStorage(System.exePath+"tools/svnbin/svnclient.tjs") if (typeof global.SvnClient == "undefined");
+
+			//var wcver = SvnClient.GetWorkingCopyVersion(System.exePath);
+			//if (wcver == "") throw new Exception("unknown working copy version.");
+			//var svnpath = System.exePath + "tools/svnbin/format" + wcver + "/svn.exe";
+			//if (!Storages.isExistentStorage(svnpath)) throw new Exception("svn.exe not found:"+svnpath);
+			var svnclient = new SvnClient(); //svnpath);
+			var info = svnclient.info(System.exePath+"data/");
+			invalidate svnclient;
+			/**/rev = info.Revision;
+			if (rev != "") rev+="?";
+		} catch {}
+		return (GetRevisionString._static_.unknown = rev);
+	} }
+}
+
+// タッチUI用hack (cf. dragutil.tjs)
+@if (!KAGHOOK_EVENTACTION)
+&KAGWindow.onTouchDown = function(*) { callHook("touchUpDownHook", this, 1, *); return typeof global.Window.onTouchDown == "Object" ? (global.Window.onTouchDown incontextof this)(*) : void; } incontextof null;
+&KAGWindow.onTouchUp   = function(*) { callHook("touchUpDownHook", this, 0, *); return typeof global.Window.onTouchUp   == "Object" ? (global.Window.onTouchUp   incontextof this)(*) : void; } incontextof null;
+@endif
+
+// ---------------------------------------------------------
+// 追加スクリプト
+// ---------------------------------------------------------
+KAGLoadScript("MyHistoryLayer.tjs");
+KAGLoadScript("MyYesNoDialog.tjs");
+KAGLoadScript("MyMapSelectLayer.tjs");
+KAGLoadScript("system.tjs");
+KAGLoadScript("win11depend.tjs") if (checkWindowsVersion("11"));
+
+KAGLoadScript("pagebase.tjs");
+KAGLoadScript("cgmode.tjs");
+KAGLoadScript("scenemode.tjs");
+KAGLoadScript("soundmode.tjs");
+KAGLoadScript("option.tjs");
+KAGLoadScript("saveload.tjs");
+function dispNameFilter(name) { return name; } // [XXX] name.tjs代替
+//KAGLoadScript("name.tjs"); // 名前入力・変更用
+//KAGLoadScript("encyclopedia.tjs"); // 百科事典用
+KAGLoadScript("fontalias.tjs"); // デフォルトフォント・多言語エイリアス系定義（default.tjsで SystemDefaultFontFace等が参照されるのでここで処理）
+KAGLoadScript("default.tjs");
+// ゲームタイトル依存スクリプト
+{
+	var files = findConfigFiles("custom.tjs");
+	for (var i=0;i<files.count;i++) {
+		KAGLoadScript(files[i]);
+	}
+}
+KAGLoadScript("embFontLoader.tjs"); // 組み込みフォント
+SetupFontAlias.DeployAll(); // fontalias 遅延処理
+KAGLoadScriptIfDebug("DebugOverride.tjs"); // デバッグ時専用

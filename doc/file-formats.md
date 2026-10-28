@@ -1,7 +1,6 @@
 # 文件格式规范
 
-本作两版都是 **krkrz + M2「MDF」脚本**：krkrz 提供归档与 TJS 运行时，M2 的工具链把剧情编译成
-PSB 对象图，由 `psbfile.dll` 解释执行。本文只写「磁盘上长什么样」。
+本作两版都是 **krkrz + M2「MDF」脚本**：krkrz 提供归档与 TJS 运行时，M2 的工具链把剧情编译成PSB 对象图，由 `psbfile.dll` 解释执行。本文只写「磁盘上长什么样」。
 
 ## 0. 判型速查
 
@@ -32,9 +31,7 @@ PSB 对象图，由 `psbfile.dll` 解释执行。本文只写「磁盘上长什�
 ```
 
 - `segm.flags & 1` = 该段 zlib 压缩；`offset` 相对文件头。
-- **文本打散**：段数据若以 `FE FE <mode> FF FE` 开头，其后是 tvp 文本混淆
-  （mode 1 = 相邻 bit 两两对调，解出 `FF FE` 开头的 UTF-16LE；mode 2 = zlib）。
-  这是引擎层通用机制，不限于剧情脚本。
+- **文本打散**：段数据若以 `FE FE <mode> FF FE` 开头，其后是 tvp 文本混淆（mode 1 = 相邻 bit 两两对调，解出 `FF FE` 开头的 UTF-16LE；mode 2 = zlib）。这是引擎层通用机制，不限于剧情脚本。
 - 索引里的文件名是 UTF-16LE。
 - 落点：`tool/xp3.py`
 
@@ -53,12 +50,15 @@ PSB 对象图，由 `psbfile.dll` 解释执行。本文只写「磁盘上长什�
   File 块与普通 xp3 相同
 ```
 
-- 条目名一律是**伪名**：第 i 条 = `U+5000 + i`（`倀倁倂…`）。
-  个别包 entry 1 会写成字面 `startup.tjs`，此时**条目数 = 记录数 + 1**，记录从 entry 1 起。
+- 条目名一律是**伪名**：第 i 条 = `U+5000 + i`（`倀倁倂…`）。个别包 entry 1 会写成字面 `startup.tjs`，此时**条目数 = 记录数 + 1**，记录从 entry 1 起。
 - **entry 0 恒为 1×1 警告 PNG**（910 B，tEXt 关键字 `Warning`），不过过滤器、原样写出。
-- `*.sig`（若存在）是 `-- SIGNATURE - SHA256/PSS/RSA --` 的 base64 签名，只做完整性校验，
-  与解密无关；未签名的新增包不影响加载。
+- `*.sig`（若存在）是 `-- SIGNATURE - SHA256/PSS/RSA --` 的 base64 签名，只做完整性校验，与解密无关；未签名的新增包不影响加载。
 - `Hxv4` 负载的加密细节与内容层过滤器见 [hxv4.md](hxv4.md)。
+- **名字与域都先规范化再哈希**：名字**小写**；`file_hash = BLAKE2s-256(UTF16LE(小写名字)+UTF16LE(盐))`，`domain_hash = SipHash-2-4(UTF16LE(小写目录+盐), key=16×0)`（根目录 = 只哈希盐，目录带结尾 `/`）。实现：`tool/hxv4hash.py`；本作盐 = `xp3hnp`（映射表里的 `HashDomain`）。反查表见[engine-mechanics.md](engine-mechanics.md) §4.1。
+- **映射表结构**（`Hxv4` 负载解密后 zlib → TJS variant）：`array[ octet(domain 8B), array[ octet(file_hash 32B), array[packed:int, key:int] ] ]`。`packed & 0xFFFF` = 条目序号（若 entry 1 的名字是字面 `startup.tjs` 则整体 +1），`packed >> 16` 实测恒 0；`key` 是该文件数据层过滤器的种子（见 [hxv4.md](hxv4.md)）。
+- `File` 块内 `segm` 每条 28 字节：`flags@0(u32) offset@4(u64) fsize@12(u64) zsize@20(u64)`；**zlib 条目的 `fsize` 是解压后长度**（写成压缩后长度 ⇒ 运行时 `Read error`）。
+- `File` 块内 `info`：`flags@0(u32) fsize@4(u64) zsize@12(u64) namelen@20(u16)`，名字从 22 起、带 2 字节 NUL；子块顺序官方为 `adlr, segm, info`。
+- `adlr` = `adler32(明文, init=1)`；**entry 0 的官方值是畸形占位**（`info.fsize** `≠`segm.fsize`、adler 与内容不符），照抄即可，不要"修正"。
 - 落点：`tool/hxv4.py::Hxv4Archive`
 
 ---
@@ -70,8 +70,7 @@ PSB 对象图，由 `psbfile.dll` 解释执行。本文只写「磁盘上长什�
 | `mdf` 包装 | `"mdf\0"` + `u32 原文长度` + zlib 流（无尾随校验字节） | 明文补丁里的 `.scn` |
 | 裸 PSB | 直接 `"PSB\0"` | 加密归档解出来的脚本文件 |
 
-**解析入口必须同时接受两种魔术**（读前 4 字节判断），不能只看扩展名 ——
-加密归档解出来的文件没有 `.scn` 后缀，扩展名与真名要靠 PSB 内的 `root["name"]` 恢复。
+**解析入口必须同时接受两种魔术**（读前 4 字节判断），不能只看扩展名 ——加密归档解出来的文件没有 `.scn` 后缀，扩展名与真名要靠 PSB 内的 `root["name"]` 恢复。
 
 ---
 
@@ -136,18 +135,18 @@ name_indexes       每个名字对应一棵树的根下标
 
 ### 3.4 字符串池
 
-`offset_strings` 处是偏移表，`offset_strings_data + offset[i]` 起、到下一个 `0x00` 为止，
-是第 i 个字符串的 **UTF-8** 正文 → 中文可直接写入，不需要编码转换。
+`offset_strings` 处是偏移表，`offset_strings_data + offset[i]` 起、到下一个 `0x00` 为止，是第 i 个字符串的 **UTF-8** 正文 → 中文可直接写入，不需要编码转换。
 
 ### 3.5 重写策略与验收判据
 
-只重排**字符串正文 + 偏移表**，其余字节原样复制，再修正头部 5 个偏移并重算 checksum：
+只重排**字符串正文 + 偏移表**，其余字节原样复制，再修正头部偏移并重算 checksum：
 
-- 适用前提：字符串**数量不变**（只换内容，不增删）
-- 不变量：不改内容重建 ⇒ PSB body **与原始逐字节相同**（第一道验收闸）
-- 要改整数（如页的 `length`）必须实现**完整对象图序列化器**：
-  数组宽度、`packed` 下标等也可能随之变化
-- 落点：`tool/psb.py::PsbFile.rebuild`
+- 字符串**数量可以增加**：新槽追加到池尾，槽号 = 原数量 + k（引用需自己改指）
+- 不变量：不改内容重建 ⇒ PSB body **与原始逐字节相同**（闸 1）
+- **闸 1 是必要条件，不是充分条件**：偏移量为 0 时它看不见「偏移量算错」。必须再跑闸 1b——**单条字符串变长 / 变短后重建，仍能解析且池内容与预期一致**
+- 头部里 `offset_names` / `offset_strings` / `offset_entries` 指向**字符串表之前**的区域，重排字符串后**不得**跟着平移；只有 `offset_chunk_*` 需要加 `shift`。（实测踩过：把 `offset_entries` 一起平移，零改动往返仍然全绿，一改内容就解析崩）
+- 要改页的 `length` **不必**写完整序列化器：它是页面数组里的内联定宽整数，同宽度可原位改字节（`PsbFile.patch_ints`）；文本引用同理（`STRING_Nx` 内联索引）。内联字段的类型字节按族区分：整数 `0x04+width`、字符串引用 `0x14+width`
+- 落点：`tool/psb.py::PsbFile.rebuild` / `find_ints` / `find_str_refs` / `patch_ints`；上层用法见 [text-model.md](text-model.md) §6
 
 ---
 
