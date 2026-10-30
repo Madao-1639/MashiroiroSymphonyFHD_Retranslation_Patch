@@ -8,1007 +8,1208 @@
   "scenario_01.txt": {
    "rows": 221,
    "voice_aligned": 79,
-   "needs_review": 142
+   "needs_review": 142,
+   "source_untranslated": 0
   },
   "scenario_02.txt": {
    "rows": 478,
    "voice_aligned": 163,
-   "needs_review": 315
+   "needs_review": 314,
+   "source_untranslated": 1
   },
   "scenario_03.txt": {
    "rows": 605,
    "voice_aligned": 216,
-   "needs_review": 389
+   "needs_review": 389,
+   "source_untranslated": 0
   },
   "scenario_04.txt": {
    "rows": 628,
    "voice_aligned": 335,
-   "needs_review": 293
+   "needs_review": 293,
+   "source_untranslated": 0
   },
   "scenario_05.txt": {
    "rows": 390,
    "voice_aligned": 180,
-   "needs_review": 210
+   "needs_review": 210,
+   "source_untranslated": 0
   },
   "scenario_06.txt": {
    "rows": 324,
    "voice_aligned": 138,
-   "needs_review": 186
+   "needs_review": 186,
+   "source_untranslated": 0
   },
   "scenario_07.txt": {
    "rows": 193,
    "voice_aligned": 81,
-   "needs_review": 112
+   "needs_review": 112,
+   "source_untranslated": 0
   },
   "scenario_08.txt": {
    "rows": 121,
    "voice_aligned": 42,
-   "needs_review": 79
+   "needs_review": 79,
+   "source_untranslated": 0
   },
   "scenario_09.txt": {
    "rows": 117,
    "voice_aligned": 70,
-   "needs_review": 47
+   "needs_review": 47,
+   "source_untranslated": 0
   },
   "scenario_10.txt": {
    "rows": 65,
    "voice_aligned": 28,
-   "needs_review": 37
+   "needs_review": 37,
+   "source_untranslated": 0
   },
   "scenario_11.txt": {
    "rows": 152,
    "voice_aligned": 78,
-   "needs_review": 74
+   "needs_review": 74,
+   "source_untranslated": 0
   },
   "scenario_12.txt": {
    "rows": 507,
    "voice_aligned": 205,
-   "needs_review": 302
+   "needs_review": 302,
+   "source_untranslated": 0
   },
   "scenario_13.txt": {
    "rows": 214,
    "voice_aligned": 107,
-   "needs_review": 107
+   "needs_review": 107,
+   "source_untranslated": 0
   },
   "scenario_14.txt": {
    "rows": 111,
    "voice_aligned": 61,
-   "needs_review": 50
+   "needs_review": 50,
+   "source_untranslated": 0
   },
   "scenario_15.txt": {
    "rows": 158,
    "voice_aligned": 82,
-   "needs_review": 76
+   "needs_review": 76,
+   "source_untranslated": 0
   },
   "scenario_16.txt": {
    "rows": 28,
    "voice_aligned": 11,
-   "needs_review": 17
+   "needs_review": 17,
+   "source_untranslated": 0
   },
   "scenario_17.txt": {
    "rows": 25,
    "voice_aligned": 16,
-   "needs_review": 9
+   "needs_review": 9,
+   "source_untranslated": 0
   },
   "scenario_18.txt": {
    "rows": 16,
    "voice_aligned": 11,
-   "needs_review": 5
+   "needs_review": 5,
+   "source_untranslated": 0
   },
   "scenario_19.txt": {
    "rows": 80,
    "voice_aligned": 57,
-   "needs_review": 23
+   "needs_review": 23,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_01.txt": {
    "rows": 541,
    "voice_aligned": 200,
-   "needs_review": 341
+   "needs_review": 341,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_02.txt": {
    "rows": 129,
    "voice_aligned": 57,
-   "needs_review": 72
+   "needs_review": 72,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_03.txt": {
    "rows": 135,
    "voice_aligned": 79,
-   "needs_review": 56
+   "needs_review": 56,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_04.txt": {
    "rows": 151,
    "voice_aligned": 76,
-   "needs_review": 75
+   "needs_review": 75,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_05.txt": {
    "rows": 349,
    "voice_aligned": 111,
-   "needs_review": 238
+   "needs_review": 238,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_06.txt": {
    "rows": 229,
    "voice_aligned": 100,
-   "needs_review": 129
+   "needs_review": 129,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_07.txt": {
    "rows": 177,
    "voice_aligned": 71,
-   "needs_review": 106
+   "needs_review": 106,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_08.txt": {
    "rows": 496,
    "voice_aligned": 158,
-   "needs_review": 338
+   "needs_review": 338,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_09.txt": {
    "rows": 297,
    "voice_aligned": 150,
-   "needs_review": 147
+   "needs_review": 147,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_10.txt": {
    "rows": 69,
    "voice_aligned": 40,
-   "needs_review": 29
+   "needs_review": 29,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_11.txt": {
    "rows": 324,
    "voice_aligned": 139,
-   "needs_review": 185
+   "needs_review": 185,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_12.txt": {
    "rows": 355,
    "voice_aligned": 145,
-   "needs_review": 210
+   "needs_review": 210,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_13.txt": {
    "rows": 360,
    "voice_aligned": 162,
-   "needs_review": 198
+   "needs_review": 197,
+   "source_untranslated": 1
   },
   "scenario_airi_route01_14.txt": {
    "rows": 124,
    "voice_aligned": 49,
-   "needs_review": 75
+   "needs_review": 75,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_15.txt": {
    "rows": 210,
    "voice_aligned": 53,
-   "needs_review": 157
+   "needs_review": 157,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_16.txt": {
    "rows": 264,
    "voice_aligned": 93,
-   "needs_review": 171
+   "needs_review": 171,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_17.txt": {
    "rows": 386,
    "voice_aligned": 118,
-   "needs_review": 268
+   "needs_review": 268,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_18.txt": {
    "rows": 171,
    "voice_aligned": 82,
-   "needs_review": 89
+   "needs_review": 89,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_19.txt": {
    "rows": 249,
    "voice_aligned": 118,
-   "needs_review": 131
+   "needs_review": 130,
+   "source_untranslated": 1
   },
   "scenario_airi_route01_20.txt": {
    "rows": 329,
    "voice_aligned": 125,
-   "needs_review": 204
+   "needs_review": 204,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_21.txt": {
    "rows": 168,
    "voice_aligned": 86,
-   "needs_review": 82
+   "needs_review": 82,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_22.txt": {
    "rows": 314,
    "voice_aligned": 146,
-   "needs_review": 168
+   "needs_review": 168,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_23.txt": {
    "rows": 474,
    "voice_aligned": 223,
-   "needs_review": 251
+   "needs_review": 251,
+   "source_untranslated": 0
   },
   "scenario_airi_route01_24.txt": {
    "rows": 255,
    "voice_aligned": 115,
-   "needs_review": 140
+   "needs_review": 140,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_01.txt": {
    "rows": 678,
    "voice_aligned": 229,
-   "needs_review": 449
+   "needs_review": 449,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_02.txt": {
    "rows": 437,
    "voice_aligned": 194,
-   "needs_review": 243
+   "needs_review": 243,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_03.txt": {
    "rows": 75,
    "voice_aligned": 37,
-   "needs_review": 38
+   "needs_review": 38,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_04.txt": {
    "rows": 493,
    "voice_aligned": 186,
-   "needs_review": 307
+   "needs_review": 307,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_05.txt": {
    "rows": 183,
    "voice_aligned": 73,
-   "needs_review": 110
+   "needs_review": 110,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_06.txt": {
    "rows": 128,
    "voice_aligned": 53,
-   "needs_review": 75
+   "needs_review": 75,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_07.txt": {
    "rows": 145,
    "voice_aligned": 45,
-   "needs_review": 100
+   "needs_review": 100,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_08.txt": {
    "rows": 52,
    "voice_aligned": 28,
-   "needs_review": 24
+   "needs_review": 24,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_09.txt": {
    "rows": 219,
    "voice_aligned": 74,
-   "needs_review": 145
+   "needs_review": 145,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_10.txt": {
    "rows": 211,
    "voice_aligned": 117,
-   "needs_review": 94
+   "needs_review": 94,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_11.txt": {
    "rows": 150,
    "voice_aligned": 73,
-   "needs_review": 77
+   "needs_review": 77,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_12.txt": {
    "rows": 32,
    "voice_aligned": 17,
-   "needs_review": 15
+   "needs_review": 15,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_13.txt": {
    "rows": 86,
    "voice_aligned": 46,
-   "needs_review": 40
+   "needs_review": 40,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_14.txt": {
    "rows": 463,
    "voice_aligned": 178,
-   "needs_review": 285
+   "needs_review": 285,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_15.txt": {
    "rows": 878,
    "voice_aligned": 362,
-   "needs_review": 516
+   "needs_review": 516,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_16.txt": {
    "rows": 252,
    "voice_aligned": 76,
-   "needs_review": 176
+   "needs_review": 176,
+   "source_untranslated": 0
   },
   "scenario_airi_route02_17.txt": {
    "rows": 52,
    "voice_aligned": 29,
-   "needs_review": 23
+   "needs_review": 23,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_01.txt": {
    "rows": 240,
    "voice_aligned": 84,
-   "needs_review": 156
+   "needs_review": 156,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_02.txt": {
    "rows": 156,
    "voice_aligned": 98,
-   "needs_review": 58
+   "needs_review": 58,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_03.txt": {
    "rows": 157,
    "voice_aligned": 76,
-   "needs_review": 81
+   "needs_review": 81,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_04.txt": {
    "rows": 330,
    "voice_aligned": 169,
-   "needs_review": 161
+   "needs_review": 160,
+   "source_untranslated": 1
   },
   "scenario_ange_route01_05.txt": {
    "rows": 129,
    "voice_aligned": 66,
-   "needs_review": 63
+   "needs_review": 63,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_06.txt": {
    "rows": 244,
    "voice_aligned": 121,
-   "needs_review": 123
+   "needs_review": 123,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_07.txt": {
    "rows": 453,
    "voice_aligned": 210,
-   "needs_review": 243
+   "needs_review": 242,
+   "source_untranslated": 1
   },
   "scenario_ange_route01_08.txt": {
    "rows": 388,
    "voice_aligned": 171,
-   "needs_review": 217
+   "needs_review": 217,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_09.txt": {
    "rows": 312,
    "voice_aligned": 121,
-   "needs_review": 191
+   "needs_review": 191,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_10.txt": {
    "rows": 203,
    "voice_aligned": 115,
-   "needs_review": 88
+   "needs_review": 88,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_11.txt": {
    "rows": 191,
    "voice_aligned": 108,
-   "needs_review": 83
+   "needs_review": 83,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_12.txt": {
    "rows": 273,
    "voice_aligned": 154,
-   "needs_review": 119
+   "needs_review": 119,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_13.txt": {
    "rows": 201,
    "voice_aligned": 100,
-   "needs_review": 101
+   "needs_review": 101,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_14.txt": {
    "rows": 254,
    "voice_aligned": 114,
-   "needs_review": 140
+   "needs_review": 140,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_15.txt": {
    "rows": 534,
    "voice_aligned": 200,
-   "needs_review": 334
+   "needs_review": 334,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_16.txt": {
    "rows": 127,
    "voice_aligned": 62,
-   "needs_review": 65
+   "needs_review": 65,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_17.txt": {
    "rows": 206,
    "voice_aligned": 121,
-   "needs_review": 85
+   "needs_review": 85,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_18.txt": {
    "rows": 362,
    "voice_aligned": 119,
-   "needs_review": 243
+   "needs_review": 243,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_19.txt": {
    "rows": 327,
    "voice_aligned": 161,
-   "needs_review": 166
+   "needs_review": 166,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_20.txt": {
    "rows": 161,
    "voice_aligned": 77,
-   "needs_review": 84
+   "needs_review": 84,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_21.txt": {
    "rows": 225,
    "voice_aligned": 78,
-   "needs_review": 147
+   "needs_review": 147,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_22.txt": {
    "rows": 217,
    "voice_aligned": 104,
-   "needs_review": 113
+   "needs_review": 113,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_23.txt": {
    "rows": 176,
    "voice_aligned": 82,
-   "needs_review": 94
+   "needs_review": 94,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_24.txt": {
    "rows": 103,
    "voice_aligned": 61,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_25.txt": {
    "rows": 45,
    "voice_aligned": 28,
-   "needs_review": 17
+   "needs_review": 17,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_26.txt": {
    "rows": 34,
    "voice_aligned": 20,
-   "needs_review": 14
+   "needs_review": 14,
+   "source_untranslated": 0
   },
   "scenario_ange_route01_27.txt": {
    "rows": 262,
    "voice_aligned": 113,
-   "needs_review": 149
+   "needs_review": 149,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_01.txt": {
    "rows": 658,
    "voice_aligned": 245,
-   "needs_review": 413
+   "needs_review": 413,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_02.txt": {
    "rows": 157,
    "voice_aligned": 86,
-   "needs_review": 71
+   "needs_review": 71,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_03.txt": {
    "rows": 88,
    "voice_aligned": 46,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_04.txt": {
    "rows": 118,
    "voice_aligned": 48,
-   "needs_review": 70
+   "needs_review": 70,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_05.txt": {
    "rows": 143,
    "voice_aligned": 78,
-   "needs_review": 65
+   "needs_review": 65,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_06.txt": {
    "rows": 107,
    "voice_aligned": 65,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_07.txt": {
    "rows": 676,
    "voice_aligned": 260,
-   "needs_review": 416
+   "needs_review": 416,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_08.txt": {
    "rows": 148,
    "voice_aligned": 74,
-   "needs_review": 74
+   "needs_review": 74,
+   "source_untranslated": 0
   },
   "scenario_ange_route02_09.txt": {
    "rows": 613,
    "voice_aligned": 237,
-   "needs_review": 376
+   "needs_review": 375,
+   "source_untranslated": 1
   },
   "scenario_ange_route02_10.txt": {
    "rows": 190,
    "voice_aligned": 85,
-   "needs_review": 105
+   "needs_review": 104,
+   "source_untranslated": 1
   },
   "scenario_miu_route01_01.txt": {
    "rows": 96,
    "voice_aligned": 36,
-   "needs_review": 60
+   "needs_review": 59,
+   "source_untranslated": 1
   },
   "scenario_miu_route01_02.txt": {
    "rows": 334,
    "voice_aligned": 150,
-   "needs_review": 184
+   "needs_review": 184,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_03.txt": {
    "rows": 585,
    "voice_aligned": 263,
-   "needs_review": 322
+   "needs_review": 322,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_04.txt": {
    "rows": 312,
    "voice_aligned": 151,
-   "needs_review": 161
+   "needs_review": 161,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_05.txt": {
    "rows": 239,
    "voice_aligned": 110,
-   "needs_review": 129
+   "needs_review": 129,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_06.txt": {
    "rows": 184,
    "voice_aligned": 111,
-   "needs_review": 73
+   "needs_review": 73,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_07.txt": {
    "rows": 250,
    "voice_aligned": 128,
-   "needs_review": 122
+   "needs_review": 122,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_08.txt": {
    "rows": 281,
    "voice_aligned": 118,
-   "needs_review": 163
+   "needs_review": 163,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_09.txt": {
    "rows": 330,
    "voice_aligned": 175,
-   "needs_review": 155
+   "needs_review": 154,
+   "source_untranslated": 1
   },
   "scenario_miu_route01_10.txt": {
    "rows": 392,
    "voice_aligned": 231,
-   "needs_review": 161
+   "needs_review": 161,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_11.txt": {
    "rows": 231,
    "voice_aligned": 109,
-   "needs_review": 122
+   "needs_review": 122,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_12.txt": {
    "rows": 132,
    "voice_aligned": 40,
-   "needs_review": 92
+   "needs_review": 92,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_13.txt": {
    "rows": 207,
    "voice_aligned": 103,
-   "needs_review": 104
+   "needs_review": 104,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_14.txt": {
    "rows": 280,
    "voice_aligned": 125,
-   "needs_review": 155
+   "needs_review": 155,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_15.txt": {
    "rows": 186,
    "voice_aligned": 70,
-   "needs_review": 116
+   "needs_review": 115,
+   "source_untranslated": 1
   },
   "scenario_miu_route01_16.txt": {
    "rows": 201,
    "voice_aligned": 89,
-   "needs_review": 112
+   "needs_review": 112,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_17.txt": {
    "rows": 147,
    "voice_aligned": 81,
-   "needs_review": 66
+   "needs_review": 66,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_18.txt": {
    "rows": 196,
    "voice_aligned": 99,
-   "needs_review": 97
+   "needs_review": 97,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_19.txt": {
    "rows": 260,
    "voice_aligned": 92,
-   "needs_review": 168
+   "needs_review": 167,
+   "source_untranslated": 1
   },
   "scenario_miu_route01_20.txt": {
    "rows": 239,
    "voice_aligned": 147,
-   "needs_review": 92
+   "needs_review": 90,
+   "source_untranslated": 2
   },
   "scenario_miu_route01_21.txt": {
    "rows": 267,
    "voice_aligned": 90,
-   "needs_review": 177
+   "needs_review": 177,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_22.txt": {
    "rows": 331,
    "voice_aligned": 128,
-   "needs_review": 203
+   "needs_review": 203,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_23.txt": {
    "rows": 197,
    "voice_aligned": 93,
-   "needs_review": 104
+   "needs_review": 104,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_24.txt": {
    "rows": 165,
    "voice_aligned": 90,
-   "needs_review": 75
+   "needs_review": 75,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_25.txt": {
    "rows": 282,
    "voice_aligned": 119,
-   "needs_review": 163
+   "needs_review": 163,
+   "source_untranslated": 0
   },
   "scenario_miu_route01_26.txt": {
    "rows": 126,
    "voice_aligned": 46,
-   "needs_review": 80
+   "needs_review": 80,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_01.txt": {
    "rows": 180,
    "voice_aligned": 121,
-   "needs_review": 59
+   "needs_review": 59,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_02.txt": {
    "rows": 84,
    "voice_aligned": 44,
-   "needs_review": 40
+   "needs_review": 40,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_03.txt": {
    "rows": 245,
    "voice_aligned": 137,
-   "needs_review": 108
+   "needs_review": 108,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_04.txt": {
    "rows": 215,
    "voice_aligned": 122,
-   "needs_review": 93
+   "needs_review": 93,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_05.txt": {
    "rows": 154,
    "voice_aligned": 74,
-   "needs_review": 80
+   "needs_review": 80,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_06.txt": {
    "rows": 288,
    "voice_aligned": 131,
-   "needs_review": 157
+   "needs_review": 157,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_07.txt": {
    "rows": 153,
    "voice_aligned": 61,
-   "needs_review": 92
+   "needs_review": 92,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_08.txt": {
    "rows": 342,
    "voice_aligned": 110,
-   "needs_review": 232
+   "needs_review": 232,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_09.txt": {
    "rows": 166,
    "voice_aligned": 61,
-   "needs_review": 105
+   "needs_review": 105,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_10.txt": {
    "rows": 94,
    "voice_aligned": 25,
-   "needs_review": 69
+   "needs_review": 69,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_11.txt": {
    "rows": 94,
    "voice_aligned": 49,
-   "needs_review": 45
+   "needs_review": 45,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_12.txt": {
    "rows": 358,
    "voice_aligned": 116,
-   "needs_review": 242
+   "needs_review": 242,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_13.txt": {
    "rows": 71,
    "voice_aligned": 32,
-   "needs_review": 39
+   "needs_review": 39,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_14.txt": {
    "rows": 59,
    "voice_aligned": 59,
-   "needs_review": 0
+   "needs_review": 0,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_15.txt": {
    "rows": 142,
    "voice_aligned": 61,
-   "needs_review": 81
+   "needs_review": 81,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_16.txt": {
    "rows": 113,
    "voice_aligned": 41,
-   "needs_review": 72
+   "needs_review": 72,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_17.txt": {
    "rows": 184,
    "voice_aligned": 74,
-   "needs_review": 110
+   "needs_review": 110,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_18.txt": {
    "rows": 74,
    "voice_aligned": 34,
-   "needs_review": 40
+   "needs_review": 40,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_19.txt": {
    "rows": 42,
    "voice_aligned": 42,
-   "needs_review": 0
+   "needs_review": 0,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_20.txt": {
    "rows": 64,
    "voice_aligned": 30,
-   "needs_review": 34
+   "needs_review": 34,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_21.txt": {
    "rows": 625,
    "voice_aligned": 209,
-   "needs_review": 416
+   "needs_review": 416,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_22.txt": {
    "rows": 131,
    "voice_aligned": 68,
-   "needs_review": 63
+   "needs_review": 63,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_23.txt": {
    "rows": 83,
    "voice_aligned": 36,
-   "needs_review": 47
+   "needs_review": 47,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_24.txt": {
    "rows": 113,
    "voice_aligned": 57,
-   "needs_review": 56
+   "needs_review": 56,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_25.txt": {
    "rows": 480,
    "voice_aligned": 172,
-   "needs_review": 308
+   "needs_review": 308,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_26.txt": {
    "rows": 151,
    "voice_aligned": 83,
-   "needs_review": 68
+   "needs_review": 68,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_27.txt": {
    "rows": 85,
    "voice_aligned": 50,
-   "needs_review": 35
+   "needs_review": 35,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_28.txt": {
    "rows": 217,
    "voice_aligned": 82,
-   "needs_review": 135
+   "needs_review": 135,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_29.txt": {
    "rows": 37,
    "voice_aligned": 8,
-   "needs_review": 29
+   "needs_review": 29,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_30.txt": {
    "rows": 31,
    "voice_aligned": 31,
-   "needs_review": 0
+   "needs_review": 0,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_31.txt": {
    "rows": 106,
    "voice_aligned": 35,
-   "needs_review": 71
+   "needs_review": 71,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_32.txt": {
    "rows": 121,
    "voice_aligned": 79,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   },
   "scenario_miu_route02_33.txt": {
    "rows": 131,
    "voice_aligned": 80,
-   "needs_review": 51
+   "needs_review": 51,
+   "source_untranslated": 0
   },
   "scenario_miu_route03_01.txt": {
    "rows": 109,
    "voice_aligned": 30,
-   "needs_review": 79
+   "needs_review": 79,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_01.txt": {
    "rows": 376,
    "voice_aligned": 122,
-   "needs_review": 254
+   "needs_review": 254,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_02.txt": {
    "rows": 895,
    "voice_aligned": 576,
-   "needs_review": 319
+   "needs_review": 319,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_03.txt": {
    "rows": 413,
    "voice_aligned": 158,
-   "needs_review": 255
+   "needs_review": 255,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_04.txt": {
    "rows": 702,
    "voice_aligned": 359,
-   "needs_review": 343
+   "needs_review": 343,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_05.txt": {
    "rows": 737,
    "voice_aligned": 356,
-   "needs_review": 381
+   "needs_review": 381,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_06.txt": {
    "rows": 629,
    "voice_aligned": 328,
-   "needs_review": 301
+   "needs_review": 301,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_07.txt": {
    "rows": 200,
    "voice_aligned": 75,
-   "needs_review": 125
+   "needs_review": 125,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_08.txt": {
    "rows": 744,
    "voice_aligned": 453,
-   "needs_review": 291
+   "needs_review": 291,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_09.txt": {
    "rows": 403,
    "voice_aligned": 146,
-   "needs_review": 257
+   "needs_review": 257,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_10.txt": {
    "rows": 491,
    "voice_aligned": 299,
-   "needs_review": 192
+   "needs_review": 192,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_11.txt": {
    "rows": 119,
    "voice_aligned": 43,
-   "needs_review": 76
+   "needs_review": 76,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_12.txt": {
    "rows": 138,
    "voice_aligned": 96,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_13.txt": {
    "rows": 260,
    "voice_aligned": 131,
-   "needs_review": 129
+   "needs_review": 129,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_14.txt": {
    "rows": 275,
    "voice_aligned": 125,
-   "needs_review": 150
+   "needs_review": 150,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route01_15.txt": {
    "rows": 104,
    "voice_aligned": 85,
-   "needs_review": 19
+   "needs_review": 19,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_01.txt": {
    "rows": 297,
    "voice_aligned": 95,
-   "needs_review": 202
+   "needs_review": 202,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_02.txt": {
    "rows": 723,
    "voice_aligned": 355,
-   "needs_review": 368
+   "needs_review": 368,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_03.txt": {
    "rows": 382,
    "voice_aligned": 148,
-   "needs_review": 234
+   "needs_review": 234,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_04.txt": {
    "rows": 130,
    "voice_aligned": 79,
-   "needs_review": 51
+   "needs_review": 51,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_05.txt": {
    "rows": 215,
    "voice_aligned": 75,
-   "needs_review": 140
+   "needs_review": 140,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_06.txt": {
    "rows": 87,
    "voice_aligned": 53,
-   "needs_review": 34
+   "needs_review": 34,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_07.txt": {
    "rows": 160,
    "voice_aligned": 73,
-   "needs_review": 87
+   "needs_review": 87,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_08.txt": {
    "rows": 642,
    "voice_aligned": 217,
-   "needs_review": 425
+   "needs_review": 425,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_09.txt": {
    "rows": 55,
    "voice_aligned": 21,
-   "needs_review": 34
+   "needs_review": 34,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_10.txt": {
    "rows": 121,
    "voice_aligned": 70,
-   "needs_review": 51
+   "needs_review": 51,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_11.txt": {
    "rows": 99,
    "voice_aligned": 56,
-   "needs_review": 43
+   "needs_review": 43,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_12.txt": {
    "rows": 348,
    "voice_aligned": 97,
-   "needs_review": 251
+   "needs_review": 251,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_13.txt": {
    "rows": 1024,
    "voice_aligned": 348,
-   "needs_review": 676
+   "needs_review": 676,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_14.txt": {
    "rows": 197,
    "voice_aligned": 111,
-   "needs_review": 86
+   "needs_review": 86,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_15.txt": {
    "rows": 167,
    "voice_aligned": 59,
-   "needs_review": 108
+   "needs_review": 108,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_16.txt": {
    "rows": 474,
    "voice_aligned": 180,
-   "needs_review": 294
+   "needs_review": 294,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_17.txt": {
    "rows": 33,
    "voice_aligned": 16,
-   "needs_review": 17
+   "needs_review": 17,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route02_18.txt": {
    "rows": 201,
    "voice_aligned": 74,
-   "needs_review": 127
+   "needs_review": 127,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route03_01.txt": {
    "rows": 1031,
    "voice_aligned": 389,
-   "needs_review": 642
+   "needs_review": 642,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route03_02.txt": {
    "rows": 814,
    "voice_aligned": 332,
-   "needs_review": 482
+   "needs_review": 482,
+   "source_untranslated": 0
   },
   "scenario_sakuno_route03_03.txt": {
    "rows": 183,
    "voice_aligned": 70,
-   "needs_review": 113
+   "needs_review": 113,
+   "source_untranslated": 0
   },
   "seアフター_01.txt": {
    "rows": 378,
    "voice_aligned": 161,
-   "needs_review": 217
+   "needs_review": 217,
+   "source_untranslated": 0
   },
   "seアフター_02（Ｈ３）.txt": {
    "rows": 522,
    "voice_aligned": 217,
-   "needs_review": 305
+   "needs_review": 305,
+   "source_untranslated": 0
   },
   "seアフター_03.txt": {
    "rows": 185,
    "voice_aligned": 73,
-   "needs_review": 112
+   "needs_review": 112,
+   "source_untranslated": 0
   },
   "年明け２月０９日（火）_01.txt": {
    "rows": 309,
    "voice_aligned": 143,
-   "needs_review": 166
+   "needs_review": 166,
+   "source_untranslated": 0
   },
   "年明け２月１４日（日）_04（Ｈ２）.txt": {
    "rows": 474,
    "voice_aligned": 214,
-   "needs_review": 260
+   "needs_review": 260,
+   "source_untranslated": 0
   },
   "年明け２月１４日（日）_05.txt": {
    "rows": 87,
    "voice_aligned": 40,
-   "needs_review": 47
+   "needs_review": 47,
+   "source_untranslated": 0
   },
   "１２月２４日（木）_02（Ｈ１）.txt": {
    "rows": 587,
    "voice_aligned": 231,
-   "needs_review": 356
+   "needs_review": 355,
+   "source_untranslated": 1
   },
   "１２月２４日（木）_03.txt": {
    "rows": 84,
    "voice_aligned": 42,
-   "needs_review": 42
+   "needs_review": 42,
+   "source_untranslated": 0
   }
  },
  "suggested_batches": [
@@ -1040,7 +1241,7 @@
     "scenario_miu_route01_03.txt",
     "scenario_sakuno_route01_02.txt"
    ],
-   "needs_review": 3478
+   "needs_review": 3476
   },
   {
    "scripts": [
@@ -1055,7 +1256,7 @@
     "scenario_sakuno_route01_08.txt",
     "scenario_airi_route02_14.txt"
    ],
-   "needs_review": 3001
+   "needs_review": 3000
   },
   {
    "scripts": [
@@ -1067,10 +1268,10 @@
     "scenario_airi_route01_23.txt",
     "scenario_sakuno_route02_12.txt",
     "scenario_airi_route02_02.txt",
-    "scenario_ange_route01_07.txt",
-    "scenario_ange_route01_18.txt"
+    "scenario_ange_route01_18.txt",
+    "scenario_ange_route01_07.txt"
    ],
-   "needs_review": 2525
+   "needs_review": 2524
   },
   {
    "scripts": [
@@ -1100,7 +1301,7 @@
     "scenario_airi_route02_16.txt",
     "scenario_airi_route01_16.txt"
    ],
-   "needs_review": 1862
+   "needs_review": 1861
   },
   {
    "scripts": [
@@ -1110,19 +1311,19 @@
     "年明け２月０９日（火）_01.txt",
     "scenario_miu_route01_08.txt",
     "scenario_miu_route01_25.txt",
-    "scenario_ange_route01_04.txt",
     "scenario_miu_route01_04.txt",
     "scenario_miu_route01_10.txt",
+    "scenario_ange_route01_04.txt",
     "scenario_airi_route01_15.txt"
    ],
-   "needs_review": 1634
+   "needs_review": 1632
   },
   {
    "scripts": [
     "scenario_miu_route02_06.txt",
     "scenario_ange_route01_01.txt",
-    "scenario_miu_route01_09.txt",
     "scenario_miu_route01_14.txt",
+    "scenario_miu_route01_09.txt",
     "scenario_sakuno_route01_14.txt",
     "scenario_ange_route01_27.txt",
     "scenario_airi_route01_09.txt",
@@ -1130,7 +1331,7 @@
     "scenario_airi_route02_09.txt",
     "scenario_01.txt"
    ],
-   "needs_review": 1503
+   "needs_review": 1502
   },
   {
    "scripts": [
@@ -1145,7 +1346,7 @@
     "scenario_sakuno_route02_18.txt",
     "scenario_sakuno_route01_07.txt"
    ],
-   "needs_review": 1325
+   "needs_review": 1324
   },
   {
    "scripts": [
@@ -1160,7 +1361,7 @@
     "scenario_miu_route01_16.txt",
     "seアフター_03.txt"
    ],
-   "needs_review": 1164
+   "needs_review": 1163
   },
   {
    "scripts": [
@@ -1170,12 +1371,12 @@
     "scenario_sakuno_route02_15.txt",
     "scenario_13.txt",
     "scenario_airi_route01_07.txt",
-    "scenario_ange_route02_10.txt",
     "scenario_miu_route02_09.txt",
+    "scenario_ange_route02_10.txt",
     "scenario_miu_route01_13.txt",
     "scenario_miu_route01_23.txt"
    ],
-   "needs_review": 1067
+   "needs_review": 1066
   },
   {
    "scripts": [
@@ -1186,11 +1387,11 @@
     "scenario_ange_route01_23.txt",
     "scenario_miu_route02_04.txt",
     "scenario_miu_route01_12.txt",
-    "scenario_miu_route01_20.txt",
     "scenario_miu_route02_07.txt",
+    "scenario_miu_route01_20.txt",
     "scenario_airi_route01_18.txt"
    ],
-   "needs_review": 944
+   "needs_review": 942
   },
   {
    "scripts": [
@@ -1250,7 +1451,7 @@
     "scenario_airi_route01_03.txt",
     "scenario_miu_route02_24.txt"
    ],
-   "needs_review": 611
+   "needs_review": 610
   },
   {
    "scripts": [

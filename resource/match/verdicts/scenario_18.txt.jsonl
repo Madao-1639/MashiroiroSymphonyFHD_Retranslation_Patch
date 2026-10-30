@@ -1,0 +1,5 @@
+{"scene":"*start","row":0,"page":0,"status_in":"needs_review","verdict":"aligned","anchored_by":"semantics","confidence":"medium","code_diff":{"pct":0,"color":0},"evidence":"同句：考试期间不用做便当；一侧称已说过、一侧称忘了说","similarity":0.439}
+{"scene":"*start","row":3,"page":0,"status_in":"needs_review","verdict":"aligned","anchored_by":"semantics","confidence":"high","code_diff":{"pct":0,"color":0},"evidence":"「……這樣啊」","similarity":0.0}
+{"scene":"*start","row":9,"page":0,"status_in":"needs_review","verdict":"aligned","anchored_by":"semantics","confidence":"high","code_diff":{"pct":0,"color":0},"evidence":"均提议考完试办庆功宴","similarity":0.222}
+{"scene":"*start","row":12,"page":0,"status_in":"needs_review","verdict":"aligned","anchored_by":"semantics","confidence":"high","code_diff":{"pct":0,"color":0},"evidence":"「──於是」","similarity":0.0}
+{"scene":"*start","row":15,"page":0,"status_in":"needs_review","verdict":"aligned","anchored_by":"semantics","confidence":"high","code_diff":{"pct":0,"color":0},"evidence":"均述四天辛苦又热闹、转瞬即逝","similarity":0.051}

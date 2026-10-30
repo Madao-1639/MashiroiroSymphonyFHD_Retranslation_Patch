@@ -27,15 +27,15 @@
 - [x] 记录按 `packed` 条目下标绑定，乱序包（`data.xp3`）同样正确
 - [x] 密码学原语公开向量回归（`script/verify_crypto.py`）
 
-## 阶段 3：文本匹配 ✅（抽样验证，非全量）
+## 阶段 3：文本匹配 ✅（全量判定）
 
-- [x] 对齐键 `(script, scene, row, page)` 覆盖 53,218 行（100%），无需模糊匹配
-- [x] 语音锚点：23,470 条带语音行 voice id **零不一致**（`resource/match/pairs/`）
-- [x] 语义抽查：11,833 行 / 22.2%（无语音行 7,740 / 26.0%），两轮抽样、每脚本尾部 40 行全覆盖
+- [x] 对齐键 `(script, scene, row, page)` 覆盖 53,218 行（100%），无模糊匹配
+- [x] 语音锚点：23,470 条带语音行 voice id **零不一致**（`resource/match/pairs/`）；无语音行 = 旁白 18,997 + 主人公（新吾）10,750 + 「？？？」1，即 `needs_review` 全集（覆盖边界见 `doc/text-model.md` §7）
+- [x] 语义判定：**29,745 / 29,745 = 100%**（201/201 脚本），`script/verify_verdicts.py` → ALL PASS；分布 `aligned` 29,715 / `shifted` 20 / `uncertain` 10 / `voice_reused_suspect` 0
 - [x] 14 行日文残留单独标出（`status = source_untranslated`），处理策略：保留官方译文
-- [x] 未匹配项分类：8 处局部两句对调（7 脚本）+ 1 处官方改写压缩，**0 处**增删行
+- [x] 偏移段分类：**10 脚本 / 14 段**（`reorder` 11、`split` 1、`extra` 2），场景行数差异 0、`missing`/`merge` 0；全部裁定 `action = "no_action"`（采纳民汉 + 位置映射）
 - [x] 引号风格差异记录在 `doc/version-diff.md` §5；汇总见 `doc/version-diff.md` §7
-- [ ] 剩余 22,207 行无语音对白未逐条判定（可选待办，不阻塞回写）
+- [ ] 10 条 `uncertain`（语义方向相反，均无语音）待人工定稿，不阻塞回写
 
 
 ## 阶段 4：回写与出包（原型已完成，实机待验）

@@ -6,7 +6,7 @@
 |---|---|---|
 | `chs_text/` | 民汉补丁文本提取（277 脚本 / 69,544 行） | `script/extract_text.py` |
 | `steam_text_zhcn/`、`steam_text_zhtw/` | Steam 版简中/繁中域提取（199 / 202 脚本） | `script/extract_text.py --profile …` |
-| `match/` | 行级映射 `pairs/<script>.jsonl`（53,218 行）+ `offsets.jsonl` + `_stats.json` | `script/match_report.py` |
+| `match/` | 行级映射 `pairs/<script>.jsonl`（53,218 行）+ 全量判定 `verdicts/<script>.jsonl`（29,745 行）+ `offsets.jsonl` + `_stats.json` | `script/build_pairs.py`（pairs/_stats）/ 阶段 3 评审（verdicts/offsets） |
 | `hxv4/profile_live.json` | Hxv4 解密参数（与游戏 build 绑定） | `script/capture_live_crypto.py` |
 | `tjs/` | 从 `data.xp3` 解出的启动链脚本（`initialize.tjs`、`storages.tjs`、`append_init.tjs`、`custom.tjs`、`override.tjs`、`config.tjs`、`default.tjs.utf16`） | 一次性提取，供机制分析复用 |
 
@@ -87,7 +87,7 @@ resource/match/pairs/<script>.jsonl           行级匹配结果
 
 ## match/（阶段 3 的对齐表与偏移证据，纯数据）
 
-由 `script/build_pairs.py` 生成，勿手工编辑。结论与统计写在[doc/version-diff.md](../doc/version-diff.md) §7。
+`pairs/`、`_stats.json` 由 `script/build_pairs.py` 生成，勿手工编辑；`verdicts/` 是阶段 3 评审产物（一次性评审，已入库）；`offsets.jsonl` 由评审脚本合并维护并带裁定字段（见下）。结论与统计写在 [doc/version-diff.md](../doc/version-diff.md) §7。
 
 ### pairs/<script>.jsonl
 
@@ -108,13 +108,46 @@ resource/match/pairs/<script>.jsonl           行级匹配结果
 
 ### _stats.json
 
-`totals`（各 status 计数）+ `scripts`（每脚本 `rows` / `voice_aligned` / `needs_review`）
+`totals`（各 status 计数）+ `scripts`（每脚本 `rows` / `voice_aligned` / `needs_review` / `source_untranslated`，三者之和 == `rows`）
 + `suggested_batches`（21 批的工作量切分）。
+
+### verdicts/<script>.jsonl
+
+阶段 3 的**全量语义判定**（201 个文件、29,745 行 = `pairs/` 的 `needs_review` 全集），一行一条，字段约束与判定规则见 [doc/version-diff.md](../doc/version-diff.md) §7：
+
+| 字段 | 含义 |
+|---|---|
+| `scene` / `row` / `page` / `status_in` | 对齐键（同 `pairs/`）；`status_in` 恒为 `needs_review` |
+| `verdict` | `aligned` / `shifted` / `uncertain` / `voice_reused_suspect` / `source_untranslated` |
+| `anchored_by` / `confidence` | 锚点（`voice` 仅限两侧 voice id 确实相同）/ `high`·`medium`·`low` |
+| `code_diff` | 两版 `%NNN;` 与 `#RRGGBBAA;` 计数差（chs − steam），当前全为 0 |
+| `evidence` | ≤120 字符的判定依据（引用关键词或说明错位方向） |
+| `similarity` | 照拄 `pairs/` 的值，仅供参考，**不是判据** |
+| `reclassified_from` / `reclass_reason` | 改判痕迹（目前 120 条由 `uncertain` 改判为 `aligned`） |
+| `action` / `decided` | 裁定状态：`uncertain` 行标 `pending`（10 条待人工定稿），其余无此字段 |
+| `_offset` 记录 | 偏移段（文件末尾；带 `action="no_action"`，与 `offsets.jsonl` 对应） |
+
+校验（键集、枚举、`code_diff`/`similarity` 独立复算、`anchored_by` 与 voice 一致性、裁定字段）：
+
+```bash
+mamba run -n GalRev python script/verify_verdicts.py
+```
+
+当前结果：`201 脚本 | 判定行 29745 | 脚本内 _offset 10 | offsets.jsonl 14 条 -> ALL PASS`。
 
 ### offsets.jsonl
 
-抽样复核中发现的**两侧内容对调**记录（8 条）：`script` / `first_shift_row` / `kind`（`reorder` 或 `rewrite`）/ `found_by`（`coarse` 粗抽、`focus` 补判）/ `evidence`（前后行摘录）。
-回写仍按位置映射，这些记录只用于说明差异（[doc/text-model.md](../doc/text-model.md) §6.3）。
+两侧内容偏移段的记录（**14 条 / 10 个脚本**，全量复核后把抽样轮与全量轮的同一段合并成一条）：
+
+| 字段 | 含义 |
+|---|---|
+| `script` / `first_shift_row` | 脚本名 / 该段首个偏移行 |
+| `kind` | `reorder`（相邻句互换或重组）/ `split`（同一段内容被重排成两行）/ `extra`（一侧多出一句）/ `rewrite+extra`（官方改写压缩，且官方文本比自身语音慢一格） |
+| `found_by` | `coarse`（粗抽）/ `focus`（关键区间补判）/ `full`（全量复核）；组合值表示两轮都命中，该条已合并 |
+| `evidence` | 前后行摘录（两版原文对照） |
+| `action` / `reason` / `decided` | **裁定 `no_action`**：采纳民汉、按位置写入即为正确结果（2026-10-30 裁定，见 [doc/version-diff.md](../doc/version-diff.md) §7.3） |
+
+回写仍按位置映射，这些记录只用于说明差异（[doc/text-model.md](../doc/text-model.md) §6.3）；偏移段涉及的行**全部无语音**，不会造成语音与文本错配。
 
 ## hxv4/（Hxv4 真实参数）
 

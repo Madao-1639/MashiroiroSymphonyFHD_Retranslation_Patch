@@ -73,7 +73,7 @@ def main():
     totals = collections.Counter()
     for script in common:
         out_rows = []
-        rows = eq = review = 0
+        rows = eq = review = other = 0
         for scene in sorted(left[script]):
             a_scene = left[script][scene]
             b_scene = right[script].get(scene, {})
@@ -115,10 +115,13 @@ def main():
                     totals[status] += 1
                     if status == "aligned":
                         eq += 1
-                    else:
+                    elif status == "needs_review":
                         review += 1
+                    else:
+                        other += 1
         textset.write_pairs(args.out, script, out_rows)
-        stats[script] = {"rows": rows, "voice_aligned": eq, "needs_review": review}
+        stats[script] = {"rows": rows, "voice_aligned": eq, "needs_review": review,
+                         "source_untranslated": other}
 
     # suggested work split: ~10 scripts per LLM batch, balanced by review workload
     order = sorted(stats.items(), key=lambda kv: -kv[1]["needs_review"])

@@ -68,20 +68,23 @@ mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<�
 也就是说：**结构完全同构**，移植不需要重排段落，直接按四元键一一对应即可。
 （`resource/*/_index.json` 的 `scenes` 字段与 `scripts/*.jsonl` 的 `scene/row/page` 就是对齐键。）
 
-阶段 3 抽样复核（201 脚本 / 5,791 行）确认了上述结论，并补出**唯一的例外：3 处局部两句内容对调**——都落在无语音叙述区内部、不传播、脚本行数守恒，`extra`/`missing`/`merge`/`split` 均为 0：
+阶段 3 全量复核（201 脚本 / 29,745 条无语音行，100%）确认了上述结论，并给出**唯一的例外：10 个脚本共 14 处局部偏移段**——全部落在无语音区内部、不传播、**场景行数守恒**（对 `chs_text` 与官方两域逐场景比对，差异 0），`missing`/`merge` 为 0：
 
-| 脚本 | 内容对调的行 | `kind` | 回写动作 |
-|---|---|---|---|
-| `scenario_airi_route02_17.txt` | 50 ↔ 51 | `reorder` | 位置写入 |
-| `scenario_miu_route01_11.txt` | 163 ↔ 164 | `reorder` | 位置写入 |
-| `scenario_miu_route02_31.txt` | 89 ↔ 90 | `reorder` | 位置写入 |
-| `scenario_sakuno_route01_10.txt` | 459 ↔ 460 | `reorder` | 位置写入 |
-| `scenario_sakuno_route01_14.txt` | 128 ↔ 129 | `reorder` | 位置写入 |
-| `scenario_miu_route02_06.txt` | 33 ↔ 34 | `reorder` | 位置写入 |
-| `１２月２４日（木）_02（Ｈ１）.txt` | 182 ↔ 183、405 ↔ 406 | `reorder` | 位置写入 |
-| `seアフター_01.txt` | 29（官方改写压缩，非对调） | `rewrite` | 位置写入 |
+| 脚本 | 偏移段 | `kind` | 发现轮次 | 回写动作 |
+|---|---|---|---|---|
+| `scenario_airi_route02_17.txt` | 50 ↔ 51 | `reorder` | 抽样 + 全量 | `no_action` |
+| `scenario_ange_route01_18.txt` | 42 ↔ 44（跨一条带语音的「啊……」） | `reorder` | 全量 | `no_action` |
+| `scenario_miu_route01_11.txt` | 162 – 164（三句重组，162 一侧为残句） | `reorder` | 抽样 + 全量 | `no_action` |
+| `scenario_miu_route02_06.txt` | 33 ↔ 34 | `reorder` | 抽样 | `no_action` |
+| `scenario_miu_route02_31.txt` | 89 ↔ 90 | `reorder` | 抽样 | `no_action` |
+| `scenario_sakuno_route01_05.txt` | 29 ↔ 30、538 ↔ 539 | `reorder` | 全量 | `no_action` |
+| `scenario_sakuno_route01_10.txt` | 153 – 154（同一段内容重排成两行） | `split` | 全量 | `no_action` |
+| `scenario_sakuno_route01_10.txt` | 459 ↔ 460 | `reorder` | 抽样 | `no_action` |
+| `scenario_sakuno_route01_14.txt` | 128 – 131 | `reorder` | 抽样 | `no_action` |
+| `seアフター_01.txt` | 29 – 37（官方改写压缩 + 文本比语音慢一格） | `rewrite+extra` | 抽样 + 全量 | `no_action` |
+| `１２月２４日（木）_02（Ｈ１）.txt` | 13（chs 多一句、相邻行合并）、182 ↔ 183、405 ↔ 406 | `extra` + `reorder` | 全量 + 抽样 | `no_action` |
 
-（前 3 处由粗抽（10.9%）发现，后 5 处由关键区间补判（覆盖到 22.2% / 无语音行 26.0%）发现，补判规则见 `doc/version-diff.md` §7.1。）
+（14 条记录的机器可读版见 `resource/match/offsets.jsonl`，字段含 `action = "no_action"` / `reason` / `decided`。`seアフター_01` 是**官方自身**的文本与语音错开一格，采纳民汉后反而恢复对应关系，见 [text-model.md](text-model.md) §6.3。）
 
 判据：同格相似度低而交叉相似度高（例 `scenario_miu_route02_31.txt`：同格 0.148/0.188 vs 交叉 0.455/0.486）。
 
@@ -114,38 +117,46 @@ mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<�
 3. ~~引号/标点归一化后再做相似度校验（建议抽 5% 做语义核对）~~ → **已于阶段 3 完成**，结果见 §7；
 4. 移植后每一条都要重算 `length`（UTF-16 码元数），见 [text-model.md](text-model.md) §4。
 
-## 7. 阶段 3：匹配判定结果（抽样验证）
+## 7. 阶段 3：匹配判定结果（全量）
 
-对齐表：`resource/match/pairs/`（53,218 行，一脚本一文件，字段见 `resource/README.md`）、工作量统计：`resource/match/_stats.json`、偏移证据：`resource/match/offsets.jsonl`。
+对齐表：`resource/match/pairs/`（53,218 行，一脚本一文件，字段见 `resource/README.md`）、全量判定：`resource/match/verdicts/`（29,745 行）、工作量统计：`resource/match/_stats.json`、偏移证据：`resource/match/offsets.jsonl`（含裁定字段，见 §4）。
 
 ### 7.1 方法
 
 - 对齐键 `(script, scene, row, page)`，不做模糊匹配；`status` 预分类：voice id 相同 ⇒ `aligned`，民汉含假名 ⇒ `source_untranslated`，其余 ⇒ `needs_review`。
-- **两轮抽样**（确定性种子）：粗抽（尾部 20 行 + 等距 6 点 + 无语音随机 4 条，21 批）→ 关键区间补判（尾部 40 行 + 每场景首尾 3 行 + 等距 12 点 + 随机 6 条，排除已判行，26 批）。
-- 语义判断由 21 + 26 个 subagent 分批完成（冻结规则，每批 ≤ 300 行）；`similarity` 只用于给置信度，**从未作为判据**。
-- 判定文件：`tmp/match/verdicts/`（粗抽）、`tmp/match/verdicts_focus/`（补判），校验工具 `script/match_report.py`（`check --batch N [--set focus]`）。
+- **`needs_review` 恒等于无语音行**（29,745 条）：语音 `id` 只挂在配角台词上，主人公与旁白不挂语音，因此语音锚点对这两类行不可用（口径见 [text-model.md](text-model.md) §7）。
+- **全量判定**：29,745 行逐条读两侧原文判「是否同一句」，不抽样。判定视图一脚本一文件（`tmp/match/review/dump/<script>`，由 `tmp/review_dump.py` 生成），三路分工清单 `tmp/match/review/lanes.md`，判定规则 `tmp/match/review/prompt.md`。
+- 判定由 subagent 分批完成（单批 2~3k 行；单代理约 3.7k 行耗尽上下文，故拆块滚动续跑）；`similarity` 只用于给置信度，**从未作为判据**。
+- 产物：**`resource/match/verdicts/<script>.jsonl`**（201 个，持久产物）。校验 `script/verify_verdicts.py`：判定键集 == `pairs/` 的 `needs_review` 键集、枚举/字段/证据长度、独立复算 `code_diff` 与 `similarity`、`anchored_by=voice` 必须两侧 voice 相同、裁定字段（`_offset` → `no_action`、`uncertain` → `pending`）。
+- 评审流程本身属**一次性**（`tmp/match/review/` 下的 dump / 分工清单 / 规则，任务结束即清）；持久产物是 `pairs/`、`verdicts/`、`offsets.jsonl` 与本节结论。
 
 ### 7.2 覆盖与分布
 
 | 项 | 值 |
 |---|---|
-| 抽样行（两轮） | **11,833 / 53,218 = 22.2%**（粗抽 5,791 + 补判 6,042） |
-| 无语音行覆盖 | **7,740 / 29,745 = 26.0%** |
-| 每脚本尾窗 | 40 行全覆盖 |
-| `aligned` | **11,823**（`voice` 4,093 + `semantics` 7,730） |
-| `shifted` | 8（§4 的 8 处局部对调） |
-| `uncertain` | 2（`scenario_ange_route01_23 row=170`、`scenario_ange_route02_07 *replay_ange_02 row=327`） |
-| `voice_reused_suspect` | 0（没有「voice 相同但语义冲突」的行） |
-| 置信度 | high 10,691 / medium 1,139 / low 3 |
-| 结构异常 | `extra`/`missing`/`merge`/`split` **全为 0** |
+| 覆盖 | **29,745 / 29,745 = 100%**（201/201 脚本，`script/verify_verdicts.py` → ALL PASS） |
+| `aligned`（确认同一句，允许措辞不同） | **29,715**（锚点：`semantics` 29,622 / `none` 123；无语音行不可能是 `voice` 锚点，184 条误标已修正） |
+| `shifted`（与相邻行错位） | **20**（分布在 §4 的偏移段内） |
+| `uncertain`（语义方向相反） | **10** |
+| `voice_reused_suspect` | 0 |
+| `source_untranslated` | 0（上游已标 14 行，不在判定范围） |
+| 置信度 | high 23,197 / medium 6,374 / low 174 |
+| 偏移段 | `offsets.jsonl` 14 条 / 10 脚本 / 全部 `action = "no_action"` |
+| 结构异常 | 场景行数差异 **0**、`missing`/`merge` **0** |
 
-`code_diff` 全为 0：两轮抽样的 7,740 条 `needs_review` 行两侧 `%NNN;` / `#RRGGBBAA;` 计数完全相同（对 `pairs/` 独立复算确认）。
+`code_diff` 全为 0：29,745 条判定行两侧 `%NNN;` / `#RRGGBBAA;` 计数完全相同（对 `pairs/` 独立复算确认）。
 
-### 7.3 回写口径
+### 7.3 回写口径（含 2026-10-30 裁定）
 
-**位置映射、采纳民汉顺序**：即使 §4 那 8 处内容对调，也按 `chs row N → steam row N` 写入，不做交叉映射。依据与残余不确定性见 [text-model.md](text-model.md) §6.1 与 §4 的表注。
+**位置映射、采纳民汉顺序**：`chs row N → steam row N`，不做交叉映射。
 
-### 7.4 尚存的可选待办
+- §4 的 14 处偏移段全部满足「**场景行数不变 + 只是语序/断句重组**」，裁定 `action = "no_action"`：采纳民汉、按位置写入即为正确结果，不需要交叉映射，也不需要改写脚本。
+- 偏移段涉及的行**全部无语音**（`needs_review` 行 100% 无语音），因此位置写入不会产生「文本与语音不同步」。
+- 唯一反例是 `seアフター_01.txt` `*start` row 30–37：**官方自己**的文本比语音慢一格（同行两侧 voice id 相同、内容却是相邻句）。采纳民汉后这些行重新对上语音，属「采纳民汉更正确」，不是风险。
 
-- 22,207 行无语音对白未逐条语义判定（依赖位置对齐；抽样未发现系统性错位）；
-- 2 条 `uncertain`、1,139 条 `medium` 置信度可人工抽看。
+### 7.4 尚存待办
+
+- **10 条 `uncertain`（语义方向相反）**，均无语音、不阻塞回写，已标 `action = "pending"` 待人工定稿：
+  `scenario_07 *prologue04 r3`、`scenario_airi_route01_17 r25`、`scenario_airi_route02_01 r94`、`scenario_airi_route02_16 r162`、`scenario_ange_route01_01 *start2 r104`、`scenario_ange_route01_18 r120`、`scenario_miu_route02_23 r54`、`scenario_sakuno_route02_04 r33`、`scenario_sakuno_route02_04 r54`、`scenario_sakuno_route03_02 r128`。
+- 另 120 条原判 `uncertain` 的「内容分叉」行已按裁定改判 `aligned` 并保留 `reclassified_from = "uncertain"` + `reclass_reason`（不影响位置映射，只是不再计入待办）。
+- 已修（2026-10-30）：184 条 `anchored_by = "voice"` 的两侧 voice 实际为 null（来自 lane2 续跑批次的误标）已改为 `semantics`；`_stats.json` 的 per-script `needs_review` 曾把 `source_untranslated` 计入（13 个脚本各偏 1~2）也已在 `script/build_pairs.py` 修正并重算，现三项之和 == `rows`。
