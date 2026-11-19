@@ -26,7 +26,7 @@
 | 字体 | 民汉补丁自带 `sourcehansansjp-bold.otf` + `deffontmap.tjs`/`embfontlist.tjs` 重定向 |
 | 文本产物布局 | **一脚本一文件**：`resource/<set>/scripts/<script>.jsonl`、`resource/match/pairs/<script>.jsonl`（读写统一走 `tool/textset.py`）；流水线 `--jobs N` 按脚本多进程 |
 | 回写 | `script/writeback.py`：字符串槽与页 `length` 均**原位改字节**，无需完整序列化器；闸 = 零改动往返 + 单串扰动 + 槽位自检 |
-| 补丁形式 | **单文件 `releases/CN.xp3`**（6.3 MB）：根域 `default.tjs`（官方原文+钩子）在启动末尾注册 `CN.xp3>cn/scn/` ⇒ 最高优先级；脚本存 `cn/scn/` 域。卸载=删文件。见 `doc/engine-mechanics.md` §3.4 |
+| 补丁形式 | **单文件 `releases/CN.xp3`**：根域 `default.tjs`（官方原文+钩子）在启动流程结束后注册 `CN.xp3>cn/scn/` ⇒ 最高优先级；脚本存 `cn/scn/` 域。卸载=删文件。见 `doc/engine-mechanics.md` §3.4 |
 
 详细规范见 `doc/file-formats.md`、`doc/text-model.md`；引擎机制见 `doc/engine-mechanics.md`；加密层见 `doc/hxv4.md`。
 

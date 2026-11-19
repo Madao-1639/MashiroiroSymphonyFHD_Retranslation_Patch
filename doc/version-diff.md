@@ -19,7 +19,7 @@ Steam 版 xp3 全为 Hxv4 加密。密钥材料只能从运行中的游戏读（
 mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<游戏目录>/data.xp3" "<游戏目录>/data_fhd.xp3" --profile resource/hxv4/profile_live.json --domain 9D31BC7AA367A8F1 --out resource/steam_text_zhcn
 ```
 
-两个语言域分别落在 `resource/steam_text_zhcn`（简中 `9D31BC7AA367A8F1`，199 脚本 / 52,133 对白）与`resource/steam_text_zhtw`（繁中 `9A19D83EC5BE3036`，202 / 53,218；**兜底用：多出 3 个 `seアフター_*`**）；阶段 2/3 的比对语料就是繁中域（旧目录 `resource/steam_text` 与其逐条相同，已删除，不再保留重复数据）。
+两个语言域分别落在 `resource/steam_text_zhcn`（简中 `9D31BC7AA367A8F1`，199 脚本 / 52,133 对白）与`resource/steam_text_zhtw`（繁中 `9A19D83EC5BE3036`，202 / 53,218；**兜底用：多出 3 个 `seアフター_*`**）；阶段 2/3 的比对语料就是繁中域（`resource/steam_text_zhcn` 与 `steam_text_zhtw` 逐条同构，只按域保存两份）。
 英文域（`BB415FD37CFB564A`）同样按项目口径**不保留**（需要时同命令 40 秒可重提）。
 两域的**结构严格一致**（共有 198 脚本 / 52,133 行，行号、页数、voice id、`char_id`、选项 `index` 全部相同，只有译文与字符串池下标不同）⇒ 在一域上得到的匹配结论可直接复用，但回写要用目标域自己的 `text_idx`/`length`，详见 [text-model.md](text-model.md) §7、`doc/text-model.md` §7.1。
 
@@ -31,13 +31,7 @@ mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<�
 
 2. **归档优先级 `patch.xp3 > data_fhd.xp3 > data.xp3`**（krkrz 按归档名升序注册、后注册者优先）。`scenario_01.txt` 在 `patch` 里比 `data` 多 1 条分支（220 → 221 条）。
 
-> 📌 **`--domain` 曾失效，已修复**（2026-10-27 阶段 3 发现 / 已修正）：
-> 旧版 `script/extract_text.py::split_container()` 对 `*.xp3` 输入返回空 domain，
-> 导致 `--domain` 静默失效、多域副本按「最后一份胜出」取到任意域 ——
-> 这就是当年 `resource/steam_text` 里装的是**繁中**而不是简中的原因（`scenario_01.txt`
-> 与繁中域 221/221 相同、与简中域仅 4/221 相同）。现在 domain 从 `<domain>/<filehash>` 正确解出，
-> 过滤器在解密前生效，并在 `_index.json` 的 `domains` 字段里回写实际域；
-> 请求的域一个脚本都没取到时直接报错退出（不再静默成功）。见 [lessons-learned.md](lessons-learned.md) §10。
+> **`--domain` 的作用点**：domain 从 `<domain>/<filehash>` 解出，并在**解密前**过滤（既正确又快）；`_index.json` 的 `domains` 字段回写实际取到的域计数；请求的域一个脚本都没取到时**直接报错退出**，不允许静默成功。实现见 [lessons-learned.md](lessons-learned.md) §10。
 
 ## 3. 脚本清单差异
 
@@ -135,7 +129,7 @@ mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<�
 | 项 | 值 |
 |---|---|
 | 覆盖 | **29,745 / 29,745 = 100%**（201/201 脚本，`script/verify_verdicts.py` → ALL PASS） |
-| `aligned`（确认同一句，允许措辞不同） | **29,715**（锚点：`semantics` 29,622 / `none` 123；无语音行不可能是 `voice` 锚点，184 条误标已修正） |
+| `aligned`（确认同一句，允许措辞不同） | **29,715**（锚点：`semantics` 29,622 / `none` 123；无语音行不可能是 `voice` 锚点） |
 | `shifted`（与相邻行错位） | **20**（分布在 §4 的偏移段内） |
 | `uncertain`（语义方向相反） | **10** |
 | `voice_reused_suspect` | 0 |
@@ -158,5 +152,5 @@ mamba run -n GalRev python script/extract_text.py "<游戏目录>/patch.xp3" "<�
 
 - **10 条 `uncertain`（语义方向相反）**，均无语音、不阻塞回写，已标 `action = "pending"` 待人工定稿：
   `scenario_07 *prologue04 r3`、`scenario_airi_route01_17 r25`、`scenario_airi_route02_01 r94`、`scenario_airi_route02_16 r162`、`scenario_ange_route01_01 *start2 r104`、`scenario_ange_route01_18 r120`、`scenario_miu_route02_23 r54`、`scenario_sakuno_route02_04 r33`、`scenario_sakuno_route02_04 r54`、`scenario_sakuno_route03_02 r128`。
-- 另 120 条原判 `uncertain` 的「内容分叉」行已按裁定改判 `aligned` 并保留 `reclassified_from = "uncertain"` + `reclass_reason`（不影响位置映射，只是不再计入待办）。
-- 已修（2026-10-30）：184 条 `anchored_by = "voice"` 的两侧 voice 实际为 null（来自 lane2 续跑批次的误标）已改为 `semantics`；`_stats.json` 的 per-script `needs_review` 曾把 `source_untranslated` 计入（13 个脚本各偏 1~2）也已在 `script/build_pairs.py` 修正并重算，现三项之和 == `rows`。
+- 120 条「内容分叉」行裁定为 `aligned`，带 `reclassified_from = "uncertain"` + `reclass_reason` 字段（不影响位置映射，不计入待办）。
+- 计数口径：`_stats.json` 的 per-script 三项必须满足 `voice_aligned + needs_review + source_untranslated == rows`；`anchored_by` 只允许在两侧 `voice` 确实相同时为 `voice`。两者均由 `script/verify_verdicts.py` 断言。

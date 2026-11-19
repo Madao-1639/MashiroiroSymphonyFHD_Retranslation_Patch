@@ -99,9 +99,25 @@ exe
 
 1. `CN` 在 subfolders 清单里 ⇒ 存在 `<exePath>CN.xp3` 时引擎会自己注册 `CN.xp3>`（早于 `patch.xp3>`）。
 2. 在 `CN.xp3` **根域**放一份 `main/default.tjs`（官方原文 + 追加钩子）。该文件在 `patch.xp3`/`patch2.xp3` 里**不存在**，而 `CN.xp3>` 比 `data.xp3` 新 ⇒ 稳定命中我们的副本；官方内容逐字节保留，只追加；早、晚两次加载都等价于原版行为（晚那次走 `cn/main/default.tjs`，不受影响）。
-3. 钩子用 `System.addContinuousHandler` 等启动走完（`MessageDefaultFontFace` 有值，兜底 300 帧），再 `Storages.addAutoPath(System.exePath + "CN.xp3>cn/scn/")` —— **整条注册链的最后一次** ⇒ 最高优先级。
+3. 钩子挂在 `SystemHook` 的 `first.init` 上（`first.ks` 的 `[syshook name="first.init"]`）：它是 `initialize.tjs` 全部 `addAutoPath` 之后的确切锚点，在那里执行 `Storages.addAutoPath(System.exePath + "CN.xp3>cn/scn/")` 才是**整条注册链的最后一次** ⇒ 最高优先级。注册时机必须由启动链的语义事件确定（§3.4.1）。
 4. 脚本存 `cn/scn/` 域（等价于官方的 `patch.xp3>cn/scn/` 布局），只影响 `cn/scn/` 命名空间：配置、存档、其它资源都不经过我们的包（存档是 `saveDataLocation/<name><tag>.ksd` 绝对路径）。
 5. 卸载 = 删除 `CN.xp3`；游戏目录内没有其它改动。
+
+#### 3.4.1 注册时机必须是启动链的语义事件
+
+优先级 = 注册时间（§3.2），而 `initialize.tjs` 的 `data.xp3><lang>/scn/`、`patch.xp3><lang>/scn/` 是在**启动链执行过程中**注册的。因此「等启动完成再注册」不能靠任何时序猜测：
+
+| 判据 | 结果 |
+|---|---|
+| 帧数兜底（如「300 帧后」） | ✗ 与语言段竞态。连续处理器在启动链中途已在被调用，抢在语言段前注册 ⇒ 官方链更新 ⇒ 我们的脚本被压住；抢在之后才生效。是否生效取决于启动路径与帧率 |
+| `kag.EzSave` 是否已赋值 | ✗ `initialize.tjs` 在 `KAGLoadScript("default.tjs")`、`kag.process("first.ks")` 与整个语言段**之前**就赋了它 ⇒ 判据成立时语言段尚未注册 |
+| **`SystemHook` 的 `first.init`** | ✓ `first.ks` 在 `initialize.tjs` 全部 `addAutoPath` 之后触发一次 |
+
+`SystemHook` 由 `system.tjs` 定义，而 `override.tjs` 在加载 `default.tjs`（钩子载体）之前就已执行 `system.tjs`，故钩子运行到 `SystemHook.add` 时它必定已存在。
+
+**这是唯一注入点（fail-closed）**：`SystemHook` 不可用时不注册任何路径，游戏保持官方文本。不保留备选时机——会静默走错时机的兜底只会产生「有时能用」的假象，掩盖真实缺陷。
+
+> 推论（解释不同用户的差异）：未游玩状态与已通关状态走不同启动路径，语言段的注册时刻不同；只要注册时机不是语义事件确定，同一份补丁就会在两台机器上表现相反。
 
 ### 3.5 已签名包与明文包
 
